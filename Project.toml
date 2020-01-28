@@ -1,0 +1,13 @@
+name = "JTPkgAuth"
+uuid = "4722fa14-9d28-45f9-a1e2-a38605bd88f0"
+authors = ["Sebastian Pfitzner"]
+version = "0.1.0"
+
+[compat]
+julia = "1"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
