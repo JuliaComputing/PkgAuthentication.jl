@@ -9,7 +9,7 @@ const HEADERS = []
 function open_browser(url)
     try
         if Sys.iswindows()
-            return run(`start $url`)
+            return run(`cmd /c "start $url"`)
         elseif Sys.islinux()
             return run(`xdg-open $url`)
         elseif Sys.isbsd()
@@ -17,6 +17,8 @@ function open_browser(url)
         elseif Sys.isapple()
             return run(`open $url`)
         end
+    catch err
+        @debug err
     finally
         printstyled("\nAuthentication required.\n"; bold = true, color = :yellow)
         println("""
