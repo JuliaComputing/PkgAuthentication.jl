@@ -77,7 +77,8 @@ function claim_token(url, challenge, response; failed = 1)
         if haskey(b, "token") # token returned. success.
             token = b["token"]
 
-
+            mkpath(dirname(token_path(url)))
+            
             open(token_path(url), "w") do io
                 Pkg.TOML.print(io, token)
             end
