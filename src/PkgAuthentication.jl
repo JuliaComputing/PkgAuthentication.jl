@@ -12,10 +12,10 @@ function open_browser(url)
             return run(`cmd /c "start $url"`)
         elseif Sys.islinux()
             return run(`xdg-open $url`)
-        elseif Sys.isbsd()
-            return run(`xdg-open $url`)
         elseif Sys.isapple()
             return run(`open $url`)
+        elseif Sys.isbsd()
+            return run(`xdg-open $url`)
         end
     catch err
         @debug err
@@ -78,7 +78,7 @@ function claim_token(url, challenge, response; failed = 1)
             token = b["token"]
 
             mkpath(dirname(token_path(url)))
-            
+
             open(token_path(url), "w") do io
                 Pkg.TOML.print(io, token)
             end
