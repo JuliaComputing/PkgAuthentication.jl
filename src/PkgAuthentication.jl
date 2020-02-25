@@ -58,7 +58,7 @@ Returns a tuple `(success, failed, expires_in)`, where `success` indicates that 
 fetched and written to disk. `failed` is incremented by one and returned if the token request failed
 with a non-200 status code.
 """
-function claim_token(url, challenge, response; failed = 1)
+function claim_token(url, challenge, response; failed = 1, pkgserver = url)
     r = HTTP.post(
         url,
         HEADERS,
@@ -82,8 +82,21 @@ function claim_token(url, challenge, response; failed = 1)
             open(token_path(url), "w") do io
                 Pkg.TOML.print(io, token)
             end
-            printstyled("\nAuthentication succesful.\n\n", bold = true, color=:green)
-            return true, 0, 0.0
+            if isfile(token_path(url))
+                printstyled("\nAuthentication succesful.\n\n", bold = true, color=:green)
+                return true, 0, 0.0
+            else
+                printstyled("\nAuthentication failed.\n\n", bold = true, color=:red)
+                println("""
+                We could download the token for you but not save it at
+                $(token_path(url))
+
+                Make sure you have write permissions for that directory and
+                try again.
+                """)
+                print_manual(pkgserver)
+                return false, typemax(Int), 0.0
+            end
         elseif haskey(b, "expiry") # server received challenge, but user is not authorized yet.
             expiry = floor(TimePeriod(Dates.unix2datetime(b["expiry"]) - now(UTC)), Second).value
             return false, failed, expiry
@@ -152,7 +165,8 @@ function authenticate(pkgserver)
                 string(pkgserver, "/claimtoken"),
                 challenge,
                 response;
-                failed = failed
+                failed = failed,
+                pkgserver = pkgserver
             )
 
             success && return
