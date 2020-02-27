@@ -82,7 +82,7 @@ function claim_token(url, challenge, response; failed = 1)
             open(token_path(url), "w") do io
                 Pkg.TOML.print(io, token)
             end
-            printstyled("\nAuthentication succesful.\n\n", bold = true, color=:green)
+            printstyled("\nAuthentication successful.\n\n", bold = true, color=:green)
             return true, 0, 0.0
         elseif haskey(b, "expiry") # server received challenge, but user is not authorized yet.
             expiry = floor(TimePeriod(Dates.unix2datetime(b["expiry"]) - now(UTC)), Second).value
