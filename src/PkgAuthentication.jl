@@ -3,6 +3,7 @@ module PkgAuthentication
 using HTTP, Random, JSON, Pkg, Dates
 
 const TIMEOUT = 180 # seconds
+const MANUAL_TIMEOUT = 30 # seconds
 const MAX_FAILURES = 5 # maximum number of failed requests
 const HEADERS = []
 
@@ -113,7 +114,7 @@ function print_manual(pkgserver)
 
     Press Enter when you're done...
     """)
-    readline()
+    with_timeout(readline, time = MANUAL_TIMEOUT)
 end
 
 """
@@ -130,7 +131,7 @@ function authenticate(pkgserver)
 
         response = fetch_response(string(pkgserver, "/challenge"), challenge)
 
-        if response == nothing
+        if response === nothing
             print_no_conn(pkgserver)
             print_manual(pkgserver)
             return
@@ -171,6 +172,37 @@ function authenticate(pkgserver)
         print_no_conn(pkgserver)
         print_manual(pkgserver)
     end
+end
+
+function with_timeout(f; time = 1)
+    r = nothing
+    @sync begin
+        timer = Timer(time)
+        t = @async begin
+            r = try
+                f()
+            catch err
+                if err isa InterruptException
+                    nothing
+                else
+                    err
+                end
+            finally
+                isopen(timer) && close(timer)
+            end
+        end
+        @async begin
+            try
+                wait(timer)
+                if !istaskdone(t)
+                    Base.schedule(t, InterruptException(); error = true)
+                end
+            catch err
+                # `wait` errors when the timer is closed, so catch that error here
+            end
+        end
+    end
+    r
 end
 
 end # module
