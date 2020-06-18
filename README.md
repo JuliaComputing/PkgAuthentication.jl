@@ -1,6 +1,6 @@
 # PkgAuthentication
 
-Pkg authentication to JuliaTeam servers.
+Authentication to private Julia package servers
 
 ```
     authenticate(pkgserver)
@@ -28,7 +28,7 @@ function register_auth_handler(pkgserver::Union{Regex, AbstractString})
         try
             run(cmd, wait = true)
         catch err
-            @error "JuliaTeam authentication handler failed."
+            @error "PkgServer authentication handler failed."
             return false, false
         end
 
