@@ -134,7 +134,7 @@ function authenticate(pkgserver)
         if response === nothing
             print_no_conn(pkgserver)
             print_manual(pkgserver)
-            return
+            return false, :no_server
         end
 
         open_browser(string(pkgserver, "/response?", response))
@@ -156,22 +156,28 @@ function authenticate(pkgserver)
                 failed = failed
             )
 
-            success && return
+            success && return true, :success
             failed > MAX_FAILURES && break
             expires_in < sleep_time && break
         end
 
         if failed > MAX_FAILURES
             print_no_conn(pkgserver)
+            print_manual(pkgserver)
+            return false, :retries_exceeded
         else
             printstyled("Authentication timed out. ", bold = true, color = :yellow)
             println("Please try again.\n")
+            print_manual(pkgserver)
+            return false, :timeout
         end
-        print_manual(pkgserver)
     catch err
         print_no_conn(pkgserver)
         print_manual(pkgserver)
+        return false, :error
     end
+
+    return false, :error
 end
 
 function with_timeout(f; time = 1)
