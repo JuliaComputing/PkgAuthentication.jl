@@ -1,7 +1,7 @@
 name = "PkgAuthentication"
 uuid = "4722fa14-9d28-45f9-a1e2-a38605bd88f0"
 authors = ["Sebastian Pfitzner"]
-version = "0.2.0"
+version = "0.3.0"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"

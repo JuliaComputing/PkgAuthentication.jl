@@ -7,9 +7,21 @@ const MANUAL_TIMEOUT = 30 # seconds
 const MAX_FAILURES = 5 # maximum number of failed requests
 const HEADERS = []
 
+const OPEN_BROWSER_HOOK = Ref{Any}(nothing)
+
+function register_open_browser_hook(f)
+    OPEN_BROWSER_HOOK[] = f
+end
+
+function clear_open_browser_hook()
+    OPEN_BROWSER_HOOK[] = nothing
+end
+
 function open_browser(url)
     try
-        if Sys.iswindows()
+        if isassigned(OPEN_BROWSER_HOOK) && OPEN_BROWSER_HOOK[] !== nothing
+            return OPEN_BROWSER_HOOK[](url)
+        elseif Sys.iswindows()
             return run(`cmd /c "start $url"`)
         elseif Sys.islinux()
             return run(`xdg-open $url`)
