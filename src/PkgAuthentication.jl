@@ -1,6 +1,6 @@
 module PkgAuthentication
 
-using HTTP, Random, JSON, Pkg, Dates
+using Downloads, Random, JSON, Pkg, Dates
 
 const TIMEOUT = 180 # seconds
 const MANUAL_TIMEOUT = 30 # seconds
@@ -58,8 +58,14 @@ end
 Fetches the server's response to `challenge` (a string) or `nothing` if the request failed.
 """
 function fetch_response(url, challenge)
-    r = HTTP.post(url, HEADERS, string(challenge), status_exception = false)
-    r.status == 200 ? String(r.body) : nothing
+    output = IOBuffer()
+    r = request(url,
+        method = "POST",
+        headers = HEADERS,
+        input = IOBuffer(string(challenge)),
+        output = output,
+    )
+    r.status == 200 ? String(take!(output)) : nothing
 end
 
 """
@@ -72,20 +78,16 @@ fetched and written to disk. `failed` is incremented by one and returned if the 
 with a non-200 status code.
 """
 function claim_token(url, challenge, response; failed = 1)
-    r = HTTP.post(
+    output = IOBuffer()
+    data = """{ "challenge": "$challenge", "response": "$response" }"""
+    r = request(
         url,
-        HEADERS,
-        """
-        {
-            "challenge": "$(challenge)",
-            "response": "$(response)"
-        }
-        """,
-        status_exception = false
+        headers = HEADERS,
+        input = IOBuffer(data),
+        output = output,
     )
-
     if r.status == 200 # request understood
-        b = JSON.parse(String(r.body))
+        b = JSON.parse(String(take!(output)))
 
         if haskey(b, "token") # token returned. success.
             token = b["token"]
