@@ -1,11 +1,219 @@
+
 module PkgAuthentication
 
 using HTTP, Random, JSON, Pkg, Dates
 
-const TIMEOUT = 180 # seconds
-const MANUAL_TIMEOUT = 30 # seconds
-const MAX_FAILURES = 5 # maximum number of failed requests
-const HEADERS = []
+function authenticate(server; force = false)
+    initial = force ? NoAuthentication : NeedAuthentication
+
+    state = initial(string(server, "/auth"))
+    while !(isa(state, Success) || isa(state, Failure))
+        state = step(state)
+    end
+
+    return state
+end
+
+## state machine
+abstract type State end
+step(state::State) = throw(ArgumentError("no step function defined for this state: `$(state)`"))
+
+struct NeedAuthentication <: State
+    server
+end
+function step(state::NeedAuthentication)::Union{HasToken, NoAuthentication}
+    path = token_path(state.server)
+    if isfile(path)
+        toml = Pkg.TOML.parsefile(path)
+        if is_token_valid(toml)
+            return HasToken(state.server, toml)
+        else
+            return NoAuthentication(state.server)
+        end
+    else
+        return NoAuthentication(state.server)
+    end
+end
+
+struct HasToken <: State
+    server
+    token
+end
+function step(state::HasToken)::Union{NeedRefresh, Success}
+    expiry = get(state.token, "expires_at", get(state.token, "expires", 0))
+    if expiry < time()
+        return NeedRefresh(state.server, state.token)
+    else
+        return Success(state.token)
+    end
+end
+
+struct NeedRefresh <: State
+    server
+    token
+end
+function step(state::NeedRefresh)::Union{HasNewToken, Failure}
+    headers = Dict(
+        "Authorization" => string("Bearer ", state.token["refresh_token"])
+    )
+    response = HTTP.get(state.token["refresh_url"], headers = headers, status_exception = false)
+    if response.status == 200
+        return HasNewToken(state.server, Pkg.TOML.parse(String(response.body)))
+    else
+        return http_error(response)
+    end
+
+    return GenericError(response)
+end
+
+struct HasNewToken <: State
+    server
+    token
+end
+function step(state::HasNewToken)::Union{Success, Failure}
+    path = token_path(state.server)
+    mkpath(dirname(path))
+    try
+        open(path, "w") do io
+            Pkg.TOML.print(io, state.token)
+        end
+        if Pkg.TOML.parsefile(path) == state.token
+            return Success(state.token)
+        else
+            return GenericError("Written and read tokens do not match.")
+        end
+    catch err
+        @error "failed to write token" exception=(err, catch_backtrace())
+        return GenericError("Failed to write token.")
+    end
+end
+
+struct NoAuthentication <: State
+    server
+end
+function step(state::NoAuthentication)::Union{RequestLogin, Failure}
+    challenge = Random.randstring(32)
+    response = HTTP.post(
+        string(state.server, "/challenge"),
+        [],
+        string(challenge),
+        status_exception = false
+    )
+
+    if response.status == 200
+        return RequestLogin(state.server, challenge, String(response.body))
+    else
+        return http_error(response)
+    end
+end
+
+struct RequestLogin <: State
+    server
+    challenge
+    response
+end
+function step(state::RequestLogin)::Union{ClaimToken}
+    open_browser(string(state.server, "/response?", state.response))
+    return ClaimToken(state.server, state.challenge, state.response)
+end
+
+struct ClaimToken <: State
+    server
+    challenge
+    response
+    expiry
+    start_time
+    timeout
+    poll_interval
+    failures
+    max_failures
+end
+ClaimToken(server, challenge, response, expiry = Inf, failures = 0) = ClaimToken(server, challenge, response, expiry, time(), 180, 2, failures, 10)
+function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
+    if (time() - state.start_time)/1e6 > state.timeout
+        return GenericError("timeout")
+    end
+
+    if state.failures > state.max_failures
+        return GenericError("Too many failed attempts.")
+    end
+
+    sleep(state.poll_interval)
+
+    response = HTTP.post(
+        string(state.server, "/claimtoken"),
+        [],
+        """{ "challenge": "$(state.challenge)", "response": "$(state.response)" }""",
+        status_exception = false
+    )
+
+    if response.status == 200
+        body = try
+            JSON.parse(String(response.body))
+        catch err
+            return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures)
+        end
+
+        if haskey(body, "token")
+            return HasNewToken(state.server, body["token"])
+        elseif haskey(body, "expiry")
+            expiry = floor(TimePeriod(Dates.unix2datetime(body["expiry"]) - now(UTC)), Second).value
+            return ClaimToken(state.server, state.challenge, state.response, expiry, state.start_time, state.timeout, state.poll_interval, state.failures, state.max_failures)
+        else
+            return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures)
+        end
+    else
+        return http_error(response)
+    end
+
+    return state
+end
+
+struct Success <: State
+    token
+end
+
+abstract type Failure <: State end
+struct GenericError <: Failure
+    reason
+end
+struct ServerError <: Failure
+    reason
+end
+struct ClientError <: Failure
+    reason
+end
+
+function http_error(response)
+    if 400 <= response.status < 500
+        return ClientError(response)
+    elseif 500 <= response.status < 600
+        return ServerError(response)
+    else
+        return GenericError(response)
+    end
+end
+
+## utils
+is_new_auth_mechanism() = isdefined(Pkg, :PlatformEngines) &&
+                          isdefined(Pkg.PlatformEngines, :get_server_dir) &&
+                          isdefined(Pkg.PlatformEngines, :register_auth_error_handler)
+
+
+is_token_valid(toml) = haskey(toml, "id_token") &&
+                       haskey(toml, "refresh_token") &&
+                       haskey(toml, "refresh_url") &&
+                       haskey(toml, "expires_at") || haskey(toml, "expires")
+
+function token_path(url)
+    if is_new_auth_mechanism()
+        server_dir = Pkg.PlatformEngines.get_server_dir(url)
+        if server_dir !== nothing
+            return joinpath(server_dir, "auth.toml")
+        end
+    end
+    get(ENV, "JULIA_PKG_TOKEN_PATH", joinpath(homedir(), ".julia", "token.toml"))
+end
 
 const OPEN_BROWSER_HOOK = Ref{Any}(nothing)
 
@@ -40,187 +248,4 @@ function open_browser(url)
     end
 end
 
-is_new_auth_mechanism() = isdefined(Pkg, :PlatformEngines) &&
-                          isdefined(Pkg.PlatformEngines, :get_server_dir) &&
-                          isdefined(Pkg.PlatformEngines, :register_auth_error_handler)
-
-function token_path(url)
-    if is_new_auth_mechanism()
-        joinpath(Pkg.PlatformEngines.get_server_dir(url), "auth.toml")
-    else
-        get(ENV, "JULIA_PKG_TOKEN_PATH", joinpath(homedir(), ".julia", "token.toml"))
-    end
 end
-
-"""
-    fetch_response(url, challenge)
-
-Fetches the server's response to `challenge` (a string) or `nothing` if the request failed.
-"""
-function fetch_response(url, challenge)
-    r = HTTP.post(url, HEADERS, string(challenge), status_exception = false)
-    r.status == 200 ? String(r.body) : nothing
-end
-
-"""
-    claim_token(url, challenge, response; failed = 0)
-
-Tries to get the token from `url` based on `challenge` and `response`.
-
-Returns a tuple `(success, failed, expires_in)`, where `success` indicates that the token has been
-fetched and written to disk. `failed` is incremented by one and returned if the token request failed
-with a non-200 status code.
-"""
-function claim_token(url, challenge, response; failed = 1)
-    r = HTTP.post(
-        url,
-        HEADERS,
-        """
-        {
-            "challenge": "$(challenge)",
-            "response": "$(response)"
-        }
-        """,
-        status_exception = false
-    )
-
-    if r.status == 200 # request understood
-        b = JSON.parse(String(r.body))
-
-        if haskey(b, "token") # token returned. success.
-            token = b["token"]
-
-            mkpath(dirname(token_path(url)))
-
-            open(token_path(url), "w") do io
-                Pkg.TOML.print(io, token)
-            end
-            printstyled("\nAuthentication successful.\n\n", bold = true, color=:green)
-            return true, 0, 0.0
-        elseif haskey(b, "expiry") # server received challenge, but user is not authorized yet.
-            expiry = floor(TimePeriod(Dates.unix2datetime(b["expiry"]) - now(UTC)), Second).value
-            return false, failed, expiry
-        else # server never received challenge, aborting.
-            return false, typemax(Int), 0.0
-        end
-    end
-    # network error. possibly retry a couple of times:
-    return false, failed+1, Inf
-end
-
-function print_no_conn(pkgserver)
-    printstyled("\nCannot reach authentication server at $(pkgserver) or authentication failed.\n", bold = true, color = :red)
-    println("Please check your internet connection and firewall settings.\n")
-end
-
-function print_manual(pkgserver)
-    authurl = pkgserver
-    println("""
-    Alternatively, open
-
-    $(authurl)
-
-    in a browser, authenticate, and save the downloaded file at
-
-    $(token_path(pkgserver))
-
-    Press Enter when you're done...
-    """)
-    with_timeout(readline, time = MANUAL_TIMEOUT)
-end
-
-"""
-    authenticate(pkgserver)
-
-Starts browser based pkg-server authentication (blocking).
-
-`pkgserver` must be a URL pointing to a server that provides the `pkgserver/challenge`,
-`pkgserver/response`, and `pkgserver/claimtoken` endpoints.
-"""
-function authenticate(pkgserver)
-    try
-        challenge = Random.randstring(32)
-
-        response = fetch_response(string(pkgserver, "/challenge"), challenge)
-
-        if response === nothing
-            print_no_conn(pkgserver)
-            print_manual(pkgserver)
-            return false, :no_server
-        end
-
-        open_browser(string(pkgserver, "/response?", response))
-
-        start_time = time()
-        expires_in = Inf
-        sleep_time = 2 # could adjust this dynamically based on start_time and expires_in, but doesn't seem worth it
-        failed = 0
-
-        while true
-            (time() - start_time)/1e6 > TIMEOUT && break
-
-            sleep(sleep_time)
-
-            success, failed, expires_in = claim_token(
-                string(pkgserver, "/claimtoken"),
-                challenge,
-                response;
-                failed = failed
-            )
-
-            success && return true, :success
-            failed > MAX_FAILURES && break
-            expires_in < sleep_time && break
-        end
-
-        if failed > MAX_FAILURES
-            print_no_conn(pkgserver)
-            print_manual(pkgserver)
-            return false, :retries_exceeded
-        else
-            printstyled("Authentication timed out. ", bold = true, color = :yellow)
-            println("Please try again.\n")
-            print_manual(pkgserver)
-            return false, :timeout
-        end
-    catch err
-        print_no_conn(pkgserver)
-        print_manual(pkgserver)
-        return false, :error
-    end
-
-    return false, :error
-end
-
-function with_timeout(f; time = 1)
-    r = nothing
-    @sync begin
-        timer = Timer(time)
-        t = @async begin
-            r = try
-                f()
-            catch err
-                if err isa InterruptException
-                    nothing
-                else
-                    err
-                end
-            finally
-                isopen(timer) && close(timer)
-            end
-        end
-        @async begin
-            try
-                wait(timer)
-                if !istaskdone(t)
-                    Base.schedule(t, InterruptException(); error = true)
-                end
-            catch err
-                # `wait` errors when the timer is closed, so catch that error here
-            end
-        end
-    end
-    r
-end
-
-end # module
