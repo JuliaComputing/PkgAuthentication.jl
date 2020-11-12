@@ -2,13 +2,32 @@
 module PkgAuthentication
 
 using HTTP, Random, JSON, Pkg, Dates
+"""
+    authenticate(pkgserver)
 
-function authenticate(server; force = false)
-    initial = force ? NoAuthentication : NeedAuthentication
+Starts browser based pkg-server authentication (blocking).
 
-    state = initial(string(server, "/auth"))
-    while !(isa(state, Success) || isa(state, Failure))
-        state = step(state)
+`pkgserver` must be a URL pointing to a server that provides the `/auth/pkgserver/challenge`,
+`/auth/pkgserver/response`, and `/auth/pkgserver/claimtoken` endpoints.
+"""
+function authenticate(server; force = false, tries = 1)
+    server = strip(server, '/')
+
+    local state
+    for i in 1:tries
+        initial = force ? NoAuthentication : NeedAuthentication
+
+        state = initial(string(server, "/auth"))
+        try
+            while !(isa(state, Success) || isa(state, Failure))
+                state = step(state)
+            end
+        catch err
+            state = GenericError(err)
+        end
+        if state isa Success
+            continue
+        end
     end
 
     return state
@@ -18,8 +37,9 @@ end
 abstract type State end
 step(state::State) = throw(ArgumentError("no step function defined for this state: `$(state)`"))
 
+## initial states
 struct NeedAuthentication <: State
-    server
+    server::String
 end
 function step(state::NeedAuthentication)::Union{HasToken, NoAuthentication}
     path = token_path(state.server)
@@ -35,9 +55,29 @@ function step(state::NeedAuthentication)::Union{HasToken, NoAuthentication}
     end
 end
 
+struct NoAuthentication <: State
+    server::String
+end
+function step(state::NoAuthentication)::Union{RequestLogin, Failure}
+    challenge = Random.randstring(32)
+    response = HTTP.post(
+        string(state.server, "/challenge"),
+        [],
+        string(challenge),
+        status_exception = false
+    )
+
+    if response.status == 200
+        return RequestLogin(state.server, challenge, String(response.body))
+    else
+        return http_error(response)
+    end
+end
+
+## intermediary states
 struct HasToken <: State
-    server
-    token
+    server::String
+    token::Dict{String, Any}
 end
 function step(state::HasToken)::Union{NeedRefresh, Success}
     expiry = get(state.token, "expires_at", get(state.token, "expires", 0))
@@ -49,26 +89,35 @@ function step(state::HasToken)::Union{NeedRefresh, Success}
 end
 
 struct NeedRefresh <: State
-    server
-    token
+    server::String
+    token::Dict{String, Any}
 end
-function step(state::NeedRefresh)::Union{HasNewToken, Failure}
+function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication, Failure}
     headers = Dict(
         "Authorization" => string("Bearer ", state.token["refresh_token"])
     )
     response = HTTP.get(state.token["refresh_url"], headers = headers, status_exception = false)
     if response.status == 200
-        return HasNewToken(state.server, Pkg.TOML.parse(String(response.body)))
+        try
+            body = JSON.parse(String(response.body))
+            if haskey(body, "token")
+                return HasNewToken(state.server, body["token"])
+            end
+        catch err
+            @error "invalid body received while refreshing token" exception=(err, catch_backtrace())
+        end
+        return NoAuthentication(state.server)
     else
         return http_error(response)
     end
+
 
     return GenericError(response)
 end
 
 struct HasNewToken <: State
-    server
-    token
+    server::String
+    token::Dict{String, Any}
 end
 function step(state::HasNewToken)::Union{Success, Failure}
     path = token_path(state.server)
@@ -88,29 +137,10 @@ function step(state::HasNewToken)::Union{Success, Failure}
     end
 end
 
-struct NoAuthentication <: State
-    server
-end
-function step(state::NoAuthentication)::Union{RequestLogin, Failure}
-    challenge = Random.randstring(32)
-    response = HTTP.post(
-        string(state.server, "/challenge"),
-        [],
-        string(challenge),
-        status_exception = false
-    )
-
-    if response.status == 200
-        return RequestLogin(state.server, challenge, String(response.body))
-    else
-        return http_error(response)
-    end
-end
-
 struct RequestLogin <: State
-    server
-    challenge
-    response
+    server::String
+    challenge::String
+    response::String
 end
 function step(state::RequestLogin)::Union{ClaimToken}
     open_browser(string(state.server, "/response?", state.response))
@@ -118,15 +148,15 @@ function step(state::RequestLogin)::Union{ClaimToken}
 end
 
 struct ClaimToken <: State
-    server
-    challenge
-    response
-    expiry
-    start_time
-    timeout
-    poll_interval
-    failures
-    max_failures
+    server::String
+    challenge::String
+    response::String
+    expiry::Float64
+    start_time::Float64
+    timeout::Float64
+    poll_interval::Float64
+    failures::Int
+    max_failures::Int
 end
 ClaimToken(server, challenge, response, expiry = Inf, failures = 0) = ClaimToken(server, challenge, response, expiry, time(), 180, 2, failures, 10)
 function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
@@ -169,19 +199,23 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
     return state
 end
 
+## final states
 struct Success <: State
-    token
+    token::Dict{String, Any}
 end
 
 abstract type Failure <: State end
-struct GenericError <: Failure
-    reason
+
+struct GenericError{T} <: Failure
+    reason::T
 end
-struct ServerError <: Failure
-    reason
+
+struct ServerError{T} <: Failure
+    reason::T
 end
-struct ClientError <: Failure
-    reason
+
+struct ClientError{T} <: Failure
+    reason::T
 end
 
 function http_error(response)

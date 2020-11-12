@@ -1,7 +1,7 @@
 using HTTP, Random, JSON
 
-const EXPIRY = 60
-const CHALLENGE_EXPIRY = 20
+const EXPIRY = 30
+const CHALLENGE_EXPIRY = 10
 const PORT = 8888
 
 const ID_TOKEN = Random.randstring(100)
@@ -77,15 +77,18 @@ end
 
 function renew_handler(req)
     println("renew_handler")
-    hs = HTTP.headers(req)
-    refresh_token = match(r"Bearer (.+)", hs["Authorization"])[1]
+    auth = HTTP.header(req, "Authorization")
+    @show auth
+    refresh_token = match(r"Bearer (.+)", auth)[1]
 
     @assert refresh_token == TOKEN[]["refresh_token"]
 
     TOKEN[]["refresh_token"] = Random.randstring(10)
-    TOKEN[]["expires_at"] = round(Int, time()) + EXPIRY
+    TOKEN[]["expires_at"] = ceil(Int, time() + EXPIRY)
 
-    return HTTP.Response(200, JSON.json(TOKEN[]))
+    return HTTP.Response(200, JSON.json(Dict(
+        "token" => TOKEN[]
+    )))
 end
 
 function check_validity(req)
@@ -98,7 +101,7 @@ router = HTTP.Router()
 HTTP.@register(router, "POST", "/auth/challenge", challenge_handler)
 HTTP.@register(router, "GET", "/auth/response", response_handler)
 HTTP.@register(router, "POST", "/auth/claimtoken", claimtoken_handler)
-HTTP.@register(router, "POST", "/auth/renew/token.toml/v2", renew_handler)
+HTTP.@register(router, "GET", "/auth/renew/token.toml/v2", renew_handler)
 HTTP.@register(router, "POST", "/auth/isvalid", check_validity)
 
 function run()
