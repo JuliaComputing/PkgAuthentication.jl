@@ -1,7 +1,7 @@
 
 module PkgAuthentication
 
-using HTTP, Random, JSON, Pkg, Dates
+using Downloads, Random, JSON, Pkg, Dates
 """
     authenticate(pkgserver)
 
@@ -60,15 +60,15 @@ struct NoAuthentication <: State
 end
 function step(state::NoAuthentication)::Union{RequestLogin, Failure}
     challenge = Random.randstring(32)
-    response = HTTP.post(
+    output = IOBuffer()
+    response = request(
         string(state.server, "/challenge"),
-        [],
-        string(challenge),
-        status_exception = false
+        method = "POST",
+        input = IOBuffer(challenge),
+        output = output
     )
-
     if response.status == 200
-        return RequestLogin(state.server, challenge, String(response.body))
+        return RequestLogin(state.server, challenge, String(take!(output)))
     else
         return http_error(response)
     end
@@ -96,10 +96,16 @@ function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication, Failure}
     headers = Dict(
         "Authorization" => string("Bearer ", state.token["refresh_token"])
     )
-    response = HTTP.get(state.token["refresh_url"], headers = headers, status_exception = false)
+    output = IOBuffer()
+    response = request(
+        state.token["refresh_url"],
+        method = "GET",
+        headers = headers,
+        output = output
+    )
     if response.status == 200
         try
-            body = JSON.parse(String(response.body))
+            body = JSON.parse(String(take!(output)))
             if haskey(body, "token")
                 return HasNewToken(state.server, body["token"])
             end
@@ -170,16 +176,18 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
 
     sleep(state.poll_interval)
 
-    response = HTTP.post(
+    output = IOBuffer()
+    data = """{ "challenge": "$(state.challenge)", "response": "$(state.response)" }"""
+    response = request(
         string(state.server, "/claimtoken"),
-        [],
-        """{ "challenge": "$(state.challenge)", "response": "$(state.response)" }""",
-        status_exception = false
+        method = "POST",
+        input = IOBuffer(data),
+        output = output
     )
 
     if response.status == 200
         body = try
-            JSON.parse(String(response.body))
+            JSON.parse(String(take!(output)))
         catch err
             return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures)
         end

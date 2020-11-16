@@ -22,8 +22,9 @@ using HTTP
         @test success isa PkgAuthentication.Failure
     end
 
-    p = run(`$(Base.julia_cmd()) $(joinpath(@__DIR__, "authserver.jl"))`, wait=false)
+    p = run(pipeline(`$(Base.julia_cmd()) --project=. $(joinpath(@__DIR__, "authserver.jl"))`, stdout="server_out.log", stderr="server_err.log"), wait=false)
     sleep(5)
+    @show p
 
     @info "registering open-browser hook"
     PkgAuthentication.register_open_browser_hook(url -> HTTP.get(url))
