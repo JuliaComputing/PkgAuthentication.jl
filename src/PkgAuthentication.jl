@@ -128,8 +128,6 @@ struct HasNewToken <: State
 end
 function step(state::HasNewToken)::Union{Success, Failure}
     path = token_path(state.server)
-    @show path
-    @show dirname(path)
     mkpath(dirname(path))
     try
         open(path, "w") do io
@@ -250,9 +248,25 @@ is_token_valid(toml) = haskey(toml, "id_token") &&
                        haskey(toml, "refresh_url") &&
                        haskey(toml, "expires_at") || haskey(toml, "expires")
 
+# This implementation of `get_server_dir` handles `domain:port` servers correctly.
+function get_server_dir(url::AbstractString, server=Pkg.pkg_server())
+    server === nothing && return
+    url == server || startswith(url, "$server/") || return
+    m = match(r"^\w+://([^\\/]+)(?:$|/)", server)
+    if m === nothing
+        @warn "malformed Pkg server value" server
+        return
+    end
+    domain = m.captures[1]
+    if Sys.iswindows()
+        domain = replace(domain, r"[\\\/\:\*\?\"\<\>\|]" => "-")
+    end
+    joinpath(Pkg.depots1(), "servers", domain)
+end
+
 function token_path(url)
     if is_new_auth_mechanism()
-        server_dir = Pkg.PlatformEngines.get_server_dir(url)
+        server_dir = get_server_dir(url)
         if server_dir !== nothing
             return joinpath(server_dir, "auth.toml")
         end
