@@ -47,8 +47,4 @@ using HTTP
         @test success2.token["refresh_token"] !== success.token["refresh_token"]
     end
     kill(p)
-    println("output log:")
-    println(read("server_out.log", String))
-    println("error log:")
-    println(read("server_err.log", String))
 end

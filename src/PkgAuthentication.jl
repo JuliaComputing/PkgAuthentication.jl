@@ -24,7 +24,8 @@ function authenticate(server; force = false, tries = 1)
                 state = step(state)
             end
         catch err
-            state = GenericError(err)
+            @error "exception while authenticating" exception=(err, catch_backtrace())
+            state = GenericError((err, catch_backtrace()))
         end
         if state isa Success
             continue
