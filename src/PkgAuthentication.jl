@@ -2,6 +2,7 @@
 module PkgAuthentication
 
 using Downloads, Random, JSON, Pkg, Dates
+
 """
     authenticate(pkgserver)
 
@@ -116,7 +117,6 @@ function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication, Failure}
     else
         return http_error(response)
     end
-
 
     return GenericError(response)
 end
