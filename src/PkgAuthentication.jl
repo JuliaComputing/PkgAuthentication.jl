@@ -128,7 +128,8 @@ struct HasNewToken <: State
 end
 function step(state::HasNewToken)::Union{Success, Failure}
     path = token_path(state.server)
-    mkpath(dirname(path))
+    @show path
+    mkpath(path)
     try
         open(path, "w") do io
             Pkg.TOML.print(io, state.token)
