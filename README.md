@@ -7,8 +7,8 @@ Authentication to private Julia package servers
 
 Starts browser based pkg-server authentication (blocking).
 
-`pkgserver` must be a URL pointing to a server that provides the `/auth/pkgserver/challenge`,
-`/auth/pkgserver/response`, and `/auth/pkgserver/claimtoken` endpoints.
+`pkgserver` must be a URL pointing to a server that provides the `/pkgserver/challenge`,
+`/pkgserver/response`, and `/pkgserver/claimtoken` endpoints.
 ```
 
 ## Example Usage

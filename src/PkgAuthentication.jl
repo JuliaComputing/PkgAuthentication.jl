@@ -8,8 +8,8 @@ using Downloads, Random, JSON, Pkg, Dates
 
 Starts browser based pkg-server authentication (blocking).
 
-`pkgserver` must be a URL pointing to a server that provides the `/auth/pkgserver/challenge`,
-`/auth/pkgserver/response`, and `/auth/pkgserver/claimtoken` endpoints.
+`pkgserver` must be a URL pointing to a server that provides the `/pkgserver/challenge`,
+`/pkgserver/response`, and `/pkgserver/claimtoken` endpoints.
 """
 function authenticate(server; force = false, tries = 1)
     server = strip(server, '/')
@@ -18,13 +18,12 @@ function authenticate(server; force = false, tries = 1)
     for i in 1:tries
         initial = force ? NoAuthentication : NeedAuthentication
 
-        state = initial(string(server, "/auth"))
+        state = initial(server)
         try
             while !(isa(state, Success) || isa(state, Failure))
                 state = step(state)
             end
         catch err
-            @error "exception while authenticating" exception=(err, catch_backtrace())
             state = GenericError((err, catch_backtrace()))
         end
         if state isa Success

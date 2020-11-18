@@ -9,7 +9,7 @@ using HTTP
         @test PkgAuthentication.is_new_auth_mechanism()
     end
 
-    serverurl = "http://localhost:8888"
+    serverurl = "http://localhost:8888/auth"
     ENV["JULIA_PKG_SERVER"] = serverurl
     token = PkgAuthentication.token_path(serverurl)
     if ispath(token)
