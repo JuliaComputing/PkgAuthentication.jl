@@ -24,7 +24,6 @@ using HTTP
 
     p = run(pipeline(`$(Base.julia_cmd()) --project=. $(joinpath(@__DIR__, "authserver.jl"))`, stdout="server_out.log", stderr="server_err.log"), wait=false)
     sleep(5)
-    @show p
 
     @info "registering open-browser hook"
     PkgAuthentication.register_open_browser_hook(url -> HTTP.get(url))

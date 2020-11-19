@@ -3,15 +3,34 @@ module PkgAuthentication
 
 using Downloads, Random, JSON, Pkg, Dates
 
+## abstract state types
+
+abstract type State end
+
+step(state::State) =
+    throw(ArgumentError("no step function defined for this state: `$(state)`"))
+
+struct Success <: State
+    token::Dict{String, Any}
+end
+
+abstract type Failure <: State end
+
+## authentication state machine
+
 """
-    authenticate(pkgserver)
+    authenticate(pkgserver::AbstractString)
 
 Starts browser based pkg-server authentication (blocking).
 
 `pkgserver` must be a URL pointing to a server that provides the `/pkgserver/challenge`,
 `/pkgserver/response`, and `/pkgserver/claimtoken` endpoints.
 """
-function authenticate(server; force = false, tries = 1)
+function authenticate(
+    server::AbstractString;
+    force::Bool = false,
+    tries::Integer = 1,
+)::Union{Success, Failure}
     server = strip(server, '/')
 
     local state
@@ -34,11 +53,8 @@ function authenticate(server; force = false, tries = 1)
     return state
 end
 
-## state machine
-abstract type State end
-step(state::State) = throw(ArgumentError("no step function defined for this state: `$(state)`"))
-
 ## initial states
+
 struct NeedAuthentication <: State
     server::String
 end
@@ -66,16 +82,18 @@ function step(state::NoAuthentication)::Union{RequestLogin, Failure}
         string(state.server, "/challenge"),
         method = "POST",
         input = IOBuffer(challenge),
-        output = output
+        output = output,
+        throw = false,
     )
-    if response.status == 200
+    if response isa Response && response.status == 200
         return RequestLogin(state.server, challenge, String(take!(output)))
     else
-        return http_error(response)
+        return HttpError(response)
     end
 end
 
-## intermediary states
+## intermediate states
+
 struct HasToken <: State
     server::String
     token::Dict{String, Any}
@@ -94,18 +112,19 @@ struct NeedRefresh <: State
     token::Dict{String, Any}
 end
 function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication, Failure}
-    headers = Dict(
-        "Authorization" => string("Bearer ", state.token["refresh_token"])
-    )
+    refresh_token = state.token["refresh_token"]
+    headers = ["Authorization" => "Bearer $refresh_token"]
     output = IOBuffer()
     response = request(
         state.token["refresh_url"],
         method = "GET",
         headers = headers,
-        output = output
+        output = output,
+        throw = false,
     )
-    if response.status == 200
+    if response isa Response && response.status == 200
         try
+            # QUESTION: should this be parsed as TOML or JSON?
             body = JSON.parse(String(take!(output)))
             if haskey(body, "token")
                 return HasNewToken(state.server, body["token"])
@@ -115,7 +134,7 @@ function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication, Failure}
         end
         return NoAuthentication(state.server)
     else
-        return http_error(response)
+        return HttpError(response)
     end
 
     return GenericError(response)
@@ -135,6 +154,7 @@ function step(state::HasNewToken)::Union{Success, Failure}
         if Pkg.TOML.parsefile(path) == state.token
             return Success(state.token)
         else
+            # QUESTION: how can this happen?
             return GenericError("Written and read tokens do not match.")
         end
     catch err
@@ -149,6 +169,7 @@ struct RequestLogin <: State
     response::String
 end
 function step(state::RequestLogin)::Union{ClaimToken}
+    # QUESTION: what if open_browser fails -- should that be a state?
     open_browser(string(state.server, "/response?", state.response))
     return ClaimToken(state.server, state.challenge, state.response)
 end
@@ -164,10 +185,12 @@ struct ClaimToken <: State
     failures::Int
     max_failures::Int
 end
-ClaimToken(server, challenge, response, expiry = Inf, failures = 0) = ClaimToken(server, challenge, response, expiry, time(), 180, 2, failures, 10)
+ClaimToken(server, challenge, response, expiry = Inf, failures = 0) =
+    ClaimToken(server, challenge, response, expiry, time(), 180, 2, failures, 10)
+
 function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
     if (time() - state.start_time)/1e6 > state.timeout
-        return GenericError("timeout")
+        return GenericError("Timeout waiting for user to authenticate in browser.")
     end
 
     if state.failures > state.max_failures
@@ -182,10 +205,11 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
         string(state.server, "/claimtoken"),
         method = "POST",
         input = IOBuffer(data),
-        output = output
+        output = output,
+        throw = false,
     )
 
-    if response.status == 200
+    if response isa Response && response.status == 200
         body = try
             JSON.parse(String(take!(output)))
         catch err
@@ -194,61 +218,66 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
 
         if haskey(body, "token")
             return HasNewToken(state.server, body["token"])
-        elseif haskey(body, "expiry")
+        elseif haskey(body, "expiry") # QUESTION: "expiry" or "expires"?
+            # QUESTION: can't all this be done with epoch arithemtic?
             expiry = floor(TimePeriod(Dates.unix2datetime(body["expiry"]) - now(UTC)), Second).value
             return ClaimToken(state.server, state.challenge, state.response, expiry, state.start_time, state.timeout, state.poll_interval, state.failures, state.max_failures)
         else
             return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures)
         end
     else
-        return http_error(response)
+        return HttpError(response)
     end
 
     return state
 end
 
-## final states
-struct Success <: State
-    token::Dict{String, Any}
-end
-
-abstract type Failure <: State end
+## errors
 
 struct GenericError{T} <: Failure
     reason::T
 end
 
-struct ServerError{T} <: Failure
+abstract type HttpError <: Failure end
+
+struct ClientError{T} <: HttpError
     reason::T
 end
 
-struct ClientError{T} <: Failure
+struct ServerError{T} <: HttpError
     reason::T
 end
 
-function http_error(response)
+struct OtherHttpError{T} <: HttpError
+    reason::T
+end
+
+function HttpError(response)::HttpError
     if 400 <= response.status < 500
         return ClientError(response)
     elseif 500 <= response.status < 600
         return ServerError(response)
     else
-        return GenericError(response)
+        return OtherHttpError(response)
     end
 end
 
 ## utils
-is_new_auth_mechanism() = isdefined(Pkg, :PlatformEngines) &&
-                          isdefined(Pkg.PlatformEngines, :get_server_dir) &&
-                          isdefined(Pkg.PlatformEngines, :register_auth_error_handler)
+is_new_auth_mechanism() =
+    isdefined(Pkg, :PlatformEngines) &&
+    isdefined(Pkg.PlatformEngines, :get_server_dir) &&
+    isdefined(Pkg.PlatformEngines, :register_auth_error_handler)
 
+is_token_valid(toml) =
+    get(toml, "id_token", nothing) isa AbstractString &&
+    get(toml, "refresh_token", nothing) isa AbstractString &&
+    get(toml, "refresh_url", nothing) isa AbstractString &&
+    (get(toml, "expires_at", nothing) isa Union{Integer, AbstractFloat} ||
+     get(toml, "expires", nothing) isa Union{Integer, AbstractFloat})
 
-is_token_valid(toml) = haskey(toml, "id_token") &&
-                       haskey(toml, "refresh_token") &&
-                       haskey(toml, "refresh_url") &&
-                       haskey(toml, "expires_at") || haskey(toml, "expires")
-
-# This implementation of `get_server_dir` handles `domain:port` servers correctly.
-function get_server_dir(url::AbstractString, server=Pkg.pkg_server())
+# This implementation of `get_server_dir` handles `domain:port` servers correctly (fixed on Pkg#master but not in older Julia versions).
+function get_server_dir(url::AbstractString,
+    server::Union{AbstractString, Nothing} = Pkg.pkg_server())
     server === nothing && return
     url == server || startswith(url, "$server/") || return
     m = match(r"^\w+://([^\\/]+)(?:$|/)", server)
@@ -263,19 +292,25 @@ function get_server_dir(url::AbstractString, server=Pkg.pkg_server())
     joinpath(Pkg.depots1(), "servers", domain)
 end
 
-function token_path(url)
+function token_path(url::AbstractString)
     if is_new_auth_mechanism()
         server_dir = get_server_dir(url)
         if server_dir !== nothing
             return joinpath(server_dir, "auth.toml")
         end
     end
-    get(ENV, "JULIA_PKG_TOKEN_PATH", joinpath(homedir(), ".julia", "token.toml"))
+    # older auth mechanism uses a different token location
+    # QUESTION: do we still need this for Julia ≥ 1.3?
+    default = joinpath(Pkg.depots1(), "token.toml")
+    get(ENV, "JULIA_PKG_TOKEN_PATH", default)
 end
 
-const OPEN_BROWSER_HOOK = Ref{Any}(nothing)
+const OPEN_BROWSER_HOOK = Ref{Union{Function, Nothing}}(nothing)
 
-function register_open_browser_hook(f)
+function register_open_browser_hook(f::Function)
+    if !hasmethod(f, Tuple{AbstractString})
+        throw(ArgumentError("Browser hook must be a function taking a single URL string argument."))
+    end
     OPEN_BROWSER_HOOK[] = f
 end
 
@@ -283,27 +318,26 @@ function clear_open_browser_hook()
     OPEN_BROWSER_HOOK[] = nothing
 end
 
-function open_browser(url)
+function open_browser(url::AbstractString)
+    @info "opening auth in browser"
+    printstyled(color = :yellow, bold = true,
+        "Authentication required: please authenticate in browser.\n")
+    printstyled(color = :yellow, """
+    The authentication page should open in your browser automatically, but you may need to switch to the opened window or tab. If the authentication page is not automatically opened, you can authenticate by manually opening the following URL: """)
+    printstyled(color = :light_blue, "$url\n")
     try
-        if isassigned(OPEN_BROWSER_HOOK) && OPEN_BROWSER_HOOK[] !== nothing
+        if OPEN_BROWSER_HOOK[] !== nothing
             return OPEN_BROWSER_HOOK[](url)
         elseif Sys.iswindows()
             return run(`cmd /c "start $url"`)
-        elseif Sys.islinux()
-            return run(`xdg-open $url`)
         elseif Sys.isapple()
             return run(`open $url`)
-        elseif Sys.isbsd()
+        elseif Sys.islinux() || Sys.isbsd()
             return run(`xdg-open $url`)
         end
     catch err
-        @debug err
-    finally
-        printstyled("\nAuthentication required.\n"; bold = true, color = :yellow)
-        println("""
-        Opening $(url) to authenticate.
-        """)
+        @warn "There was a problem opening the authentication URL in a browser, please try opening this URL manually to authenticate." url, error = err
     end
 end
 
-end
+end # module
