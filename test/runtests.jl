@@ -1,5 +1,6 @@
 using PkgAuthentication
 using Test
+using HTTP
 
 @testset "PkgAuthentication" begin
     if VERSION < v"1.5"
@@ -8,11 +9,41 @@ using Test
         @test PkgAuthentication.is_new_auth_mechanism()
     end
 
-    t = time()
-    @test PkgAuthentication.authenticate("https://example.com") === nothing
-    @test time() - t < PkgAuthentication.TIMEOUT
+    serverurl = "http://localhost:8888/auth"
+    ENV["JULIA_PKG_SERVER"] = serverurl
+    token = PkgAuthentication.token_path(serverurl)
+    if ispath(token)
+        @info "removing token"
+        rm(token, force = true)
+    end
 
-    t = time()
-    @test PkgAuthentication.authenticate("https://juliahub.com/auth") === nothing
-    @test time() - t >= PkgAuthentication.MANUAL_TIMEOUT
+    @testset "auth without server" begin
+        success = PkgAuthentication.authenticate(serverurl)
+        @test success isa PkgAuthentication.Failure
+    end
+
+    p = run(pipeline(`$(Base.julia_cmd()) --project=. $(joinpath(@__DIR__, "authserver.jl"))`, stdout="server_out.log", stderr="server_err.log"), wait=false)
+    sleep(5)
+
+    @info "registering open-browser hook"
+    PkgAuthentication.register_open_browser_hook(url -> HTTP.get(url))
+
+    @testset "auth with running server" begin
+        @info "testing inital auth"
+        success = PkgAuthentication.authenticate(serverurl)
+
+        @test success isa PkgAuthentication.Success
+        @test success.token["expires_at"] > time()
+
+        sleeptimer = ceil(Int, success.token["expires_at"]  - time() + 1)
+        @info "sleep for $(sleeptimer)s (until refresh necessary)"
+        sleep(sleeptimer)
+
+        @info "testing auth refresh"
+        success2 = PkgAuthentication.authenticate(serverurl)
+        @test success2 isa PkgAuthentication.Success
+        @test success2.token["expires_at"] > time()
+        @test success2.token["refresh_token"] !== success.token["refresh_token"]
+    end
+    kill(p)
 end
