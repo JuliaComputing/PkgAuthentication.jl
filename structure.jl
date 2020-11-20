@@ -9,7 +9,7 @@ vertices = string.(nameof.(subtypes(PkgAuthentication.State)))
 for vertex in vertices
     add_vertex!(g)
 end
-vertices
+
 for line in lines
     m = match(r"^function step\(state::(.+?)\)::Union{(.+?)}$", line)
     if m !== nothing
@@ -18,5 +18,5 @@ for line in lines
         end
     end
 end
-
-draw(PNG(joinpath(@__DIR__, "structure.png"), 16cm, 16cm), gplot(g, nodelabel=vertices, linetype="curve"))
+plot = gplot(g, nodelabel=vertices, linetype="curve")
+draw(PNG(joinpath(@__DIR__, "structure.png"), 16cm, 16cm), plot)
