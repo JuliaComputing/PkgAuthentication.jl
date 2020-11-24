@@ -13,18 +13,36 @@ Starts browser based pkg-server authentication (blocking).
 
 ## Example Usage
 
-Use `PkgAuthentication.is_new_auth_mechanism()` to check if the currently installed
-version of Pkg supports authentication hooks. If so, register a hook with e.g.
-``````julia
-function register_auth_handler(pkgserver::Union{Regex, AbstractString})
-    return Pkg.PlatformEngines.register_auth_error_handler(pkgserver, (url, svr, err) -> begin
-        ret = PkgAuthentication.authenticate(svr, tries = 3)
-        # TODO: handle errors
-    end)
-end
-``````
+Put the following into your `startup.jl` to enable authentication for `https://juliahub.com` (or the current package server by tweaking the `SERVER = ...` line):
+```julia
+# create a new anonymous module for the init code
+Base.eval(Module(), quote
+    using PkgAuthentication, Pkg
 
-If not, start the external process at some other time, e.g. on startup.
+    # set this to your package server or use `Pkg.pkg_server()` instead:
+    SERVER = "https://juliahub.com"
+
+    function authenticate(url, svr, err)
+        ret = PkgAuthentication.authenticate(string(svr, "/auth"), tries = 3)
+        if ret isa PkgAuthentication.Success
+            @info "Authentication successful."
+        else
+            @error "Failed to authenticate to $(svr)." exception=ret
+        end
+    end
+
+    function register_auth_handler(pkgserver::Union{Regex, AbstractString})
+        return Pkg.PlatformEngines.register_auth_error_handler(pkgserver, authenticate)
+    end
+
+    if PkgAuthentication.is_new_auth_mechanism()
+        register_auth_handler(SERVER)
+    else
+        # old Julia versions don't support auth hooks, so let's authenticate now and be done with it
+        authenticate(SERVER)
+    end
+end)
+```
 
 ## Implementation
 
