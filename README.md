@@ -21,6 +21,7 @@ Base.eval(Module(), quote
 
     # set this to your package server or use `Pkg.pkg_server()` instead:
     SERVER = "https://juliahub.com"
+    # SERVER = string(Pkg.pkg_server())
 
     function authenticate(url, svr, err)
         ret = PkgAuthentication.authenticate(string(svr, "/auth"), tries = 3)
