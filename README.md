@@ -29,6 +29,7 @@ Base.eval(Module(), quote
         else
             @error "Failed to authenticate to $(svr)." exception=ret
         end
+        return true, false
     end
 
     function register_auth_handler(pkgserver::Union{Regex, AbstractString})
