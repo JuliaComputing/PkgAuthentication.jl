@@ -124,6 +124,7 @@ function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication, Failure}
         output = output,
         throw = false,
     )
+    # errors are recoverable by just getting a new token:
     if response isa Response && response.status == 200
         try
             body = JSON.parse(String(take!(output)))
@@ -135,7 +136,8 @@ function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication, Failure}
         end
         return NoAuthentication(state.server)
     else
-        return HttpError(response)
+        @debug "request for refreshing token failed" exception=(err, catch_backtrace())
+        return NoAuthentication(state.server)
     end
 
     return GenericError(response)
