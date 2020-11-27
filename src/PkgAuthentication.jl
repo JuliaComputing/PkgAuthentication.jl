@@ -258,7 +258,7 @@ struct OtherHttpError{T} <: HttpError
     reason::T
 end
 
-function HttpError(response)::HttpError
+function HttpError(response::Downloads.Response)::HttpError
     if 400 <= response.status < 500
         return ClientError(response)
     elseif 500 <= response.status < 600
@@ -266,6 +266,10 @@ function HttpError(response)::HttpError
     else
         return OtherHttpError(response)
     end
+end
+
+function HttpError(response::Downloads.RequestError)::HttpError
+    return ClientError(response.message)
 end
 
 ## utils
