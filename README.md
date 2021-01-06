@@ -11,17 +11,15 @@ Starts browser based pkg-server authentication (blocking).
 `/pkgserver/response`, and `/pkgserver/claimtoken` endpoints.
 ```
 
-## Example Usage
-
-Put the following into your `startup.jl` to enable authentication for `https://juliahub.com` (or the current package server by tweaking the `SERVER = ...` line):
+## Installation
+1. Make sure the PkgAuthentication.jl is part of the default Julia environment.
+2. Put the following into your `startup.jl` to enable authentication for server as configured in JULIA_PKG_SERVER environment variable.
 ```julia
 # create a new anonymous module for the init code
 Base.eval(Module(), quote
     using PkgAuthentication, Pkg
 
-    # set this to your package server or use `Pkg.pkg_server()` instead:
-    SERVER = "https://juliahub.com"
-    # SERVER = string(Pkg.pkg_server())
+    SERVER = string(Pkg.pkg_server())
 
     function authenticate(url, svr, err)
         ret = PkgAuthentication.authenticate(string(svr, "/auth"), tries = 3)
