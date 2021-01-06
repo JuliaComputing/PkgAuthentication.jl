@@ -12,7 +12,7 @@ Starts browser based pkg-server authentication (blocking).
 ```
 
 ## Installation
-1. Make sure the PkgAuthentication.jl is part of the default Julia environment.
+1. Make sure PkgAuthentication.jl is part of the default Julia environment.
 2. Put the following into your `startup.jl` to enable authentication for server as configured in JULIA_PKG_SERVER environment variable.
 ```julia
 # create a new anonymous module for the init code
