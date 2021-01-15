@@ -353,4 +353,52 @@ function open_browser(url::AbstractString)
     return true
 end
 
+"""
+    install(server = nothing; maxcount = 3)
+
+Install Pkg authentication hooks for `Pkg.pkg_server()`.
+
+Will instead use `server` (and set the `JULIA_PKG_SERVER` environment variable accordingly) if given.
+`maxcount` determines the number of retries.
+
+Julia versions older than 1.4 do not support authentication hooks, so this function will force
+authentication right away.
+"""
+function install(server = nothing; maxcount = 3)
+    if server !== nothing
+        ENV["JULIA_PKG_SERVER"] = server
+    end
+    server = Pkg.pkg_server()
+
+    failed_auth_count = 0
+
+    authenticate = (url, svr, err) -> begin
+        ret = PkgAuthentication.authenticate(string(svr, "/auth"), tries = 2)
+        if ret isa PkgAuthentication.Success
+            failed_auth_count = 0
+            @debug "Authentication successful."
+        else
+            failed_auth_count += 1
+            if failed_auth_count >= maxcount
+                printstyled(color = :red, bold = true, "\nAuthentication failed.\n\n")
+                return true, false # handled, but Pkg shouldn't try again
+            else
+                printstyled(color = :yellow, bold = true, "\nAuthentication failed. Retrying...\n\n")
+            end
+        end
+        return true, true # handled, and Pkg should try again now
+    end
+
+    register_auth_handler = (pkgserver::Union{Regex, AbstractString}) -> begin
+        return Pkg.PlatformEngines.register_auth_error_handler(pkgserver, authenticate)
+    end
+
+    if PkgAuthentication.is_new_auth_mechanism()
+        register_auth_handler(server)
+    else
+        # old Julia versions don't support auth hooks, so let's authenticate now and be done with it
+        authenticate(server)
+    end
+end
+
 end # module
