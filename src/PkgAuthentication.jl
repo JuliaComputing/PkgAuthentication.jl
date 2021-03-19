@@ -368,7 +368,7 @@ function install(server = nothing; maxcount = 3)
     if server !== nothing
         ENV["JULIA_PKG_SERVER"] = server
     end
-    server = Pkg.pkg_server()
+    server = string(Pkg.pkg_server())
 
     failed_auth_count = 0
 
