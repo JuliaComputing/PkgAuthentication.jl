@@ -1,17 +1,35 @@
 name: CI
 on:
-  - push
-  - pull_request
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+    tags: '*'
+concurrency:
+  # Skip intermediate builds: all builds except for builds on the `master` branch
+  # Cancel intermediate builds: only pull request builds
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.ref != 'refs/heads/master' || github.run_number }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
 jobs:
   test:
-    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         version:
+          # Parts of this package depend on Pkg internals.
+          # Because Pkg internals are allowed to change between Julia minor versions,
+          # we should run CI on each minor version of Julia that we want to support.
           - '1.3'
+          - '1.4'
           - '1.5'
+          - '1.6'
+          # - '1.7' # TODO: uncomment this line once Julia 1.8 is released
+          - '~1.8.0-rc1' # TODO: delete this line once Julia 1.8 is released
+          - '1' # automatically expands to the latest stable 1.x release
           - 'nightly'
         os:
           - ubuntu-latest
@@ -37,3 +55,7 @@ jobs:
             ${{ runner.os }}-
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
+      - uses: julia-actions/julia-processcoverage@v1
+      - uses: codecov/codecov-action@v2
+        with:
+          files: lcov.info

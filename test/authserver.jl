@@ -98,11 +98,11 @@ function check_validity(req)
 end
 
 router = HTTP.Router()
-HTTP.@register(router, "POST", "/auth/challenge", challenge_handler)
-HTTP.@register(router, "GET", "/auth/response", response_handler)
-HTTP.@register(router, "POST", "/auth/claimtoken", claimtoken_handler)
-HTTP.@register(router, "GET", "/auth/renew/token.toml/v2", renew_handler)
-HTTP.@register(router, "POST", "/auth/isvalid", check_validity)
+HTTP.register!(router, "POST", "/auth/challenge", challenge_handler)
+HTTP.register!(router, "GET", "/auth/response", response_handler)
+HTTP.register!(router, "POST", "/auth/claimtoken", claimtoken_handler)
+HTTP.register!(router, "GET", "/auth/renew/token.toml/v2", renew_handler)
+HTTP.register!(router, "POST", "/auth/isvalid", check_validity)
 
 function run()
     println("starting server")
