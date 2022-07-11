@@ -373,25 +373,9 @@ is_token_valid(toml) =
     (get(toml, "expires_at", nothing) isa Union{Integer, AbstractFloat} ||
      get(toml, "expires", nothing) isa Union{Integer, AbstractFloat})
 
-@static if Base.VERSION >= v"1.10-" # TODO: change this to "1.9-" if we are able to fix Pkg in time for 1.9
-    const get_server_dir = Pkg.PlatformEngines.get_server_dir
-else
-    # This implementation of `get_server_dir` handles `domain:port` servers correctly (fixed on Pkg#master but not in older Julia versions).
-    function get_server_dir(url::AbstractString, server = get_pkg_server())
-        server === nothing && return
-        url == server || startswith(url, "$server/") || return
-        m = match(r"^\w+://(?:[^\\/@]+@)?([^\\/:]+)(?:$|/|:)", server)
-        if m === nothing
-            @warn "malformed Pkg server value" server
-            return
-        end
-        joinpath(Pkg.depots1(), "servers", m.captures[1])
-    end
-end
-
 function token_path(url::AbstractString)
     @static if is_new_auth_mechanism()
-        server_dir = get_server_dir(url)
+        server_dir = Pkg.PlatformEngines.get_server_dir(url)
         if server_dir !== nothing
             return joinpath(server_dir, "auth.toml")
         end
