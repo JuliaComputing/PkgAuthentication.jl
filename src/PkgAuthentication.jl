@@ -484,7 +484,7 @@ function install(; maxcount::Integer = 3)
         throw(ArgumentError("`maxcount` must be greater than or equal to one"))
     end
     _assert_pkg_server_env_var_is_set()
-    server = Pkg.pkg_server()::AbstractString
+    server = String(Pkg.pkg_server()::AbstractString)
     auth_handler = generate_auth_handler(maxcount)
     @static if PkgAuthentication.is_new_auth_mechanism()
         Pkg.PlatformEngines.register_auth_error_handler(server, auth_handler)
