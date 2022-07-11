@@ -363,7 +363,7 @@ is_token_valid(toml) =
     const get_server_dir = Pkg.PlatformEngines.get_server_dir
 else
     # This implementation of `get_server_dir` handles `domain:port` servers correctly (fixed on Pkg#master but not in older Julia versions).
-    function get_server_dir(url::AbstractString, server = get_pkg_server())
+    function get_server_dir(url::AbstractString, server = Pkg.pkg_server())
         server === nothing && return
         url == server || startswith(url, "$server/") || return
         m = match(r"^\w+://(?:[^\\/@]+@)?([^\\/:]+)(?:$|/|:)", server)
