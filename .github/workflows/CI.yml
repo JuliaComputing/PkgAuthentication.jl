@@ -23,7 +23,6 @@ jobs:
           # Parts of this package depend on Pkg internals.
           # Because Pkg internals are allowed to change between Julia minor versions,
           # we should run CI on each minor version of Julia that we want to support.
-          - '1.3'
           - '1.4'
           - '1.5'
           - '1.6'
