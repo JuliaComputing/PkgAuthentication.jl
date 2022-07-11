@@ -99,7 +99,7 @@ function authenticate(;
 
     _assert_pkg_server_env_var_is_set()
 
-    server = get_pkg_server()::String
+    server = Pkg.pkg_server()::AbstractString
     server = rstrip(server, '/')
     server = string(server, "/", auth_suffix)
 
@@ -347,20 +347,6 @@ end
 
 ## utils
 
-@static if Base.VERSION >= v"1.4-"
-    # Note that we add `::Union{String, Nothing}` to force conversion from `SubString` to `String`
-    get_pkg_server()::Union{String, Nothing} = Pkg.pkg_server()
-else
-    # This function does not exist in Julia 1.3
-    # Note that we add `::Union{String, Nothing}` to force conversion from `SubString` to `String`
-    function get_pkg_server()::Union{String, Nothing}
-        server = get(ENV, "JULIA_PKG_SERVER", "https://pkg.julialang.org")
-        isempty(server) && return nothing
-        startswith(server, r"\w+://") || (server = "https://$server")
-        return rstrip(server, '/')
-    end
-end
-
 is_new_auth_mechanism() =
     isdefined(Pkg, :PlatformEngines) &&
     isdefined(Pkg.PlatformEngines, :get_server_dir) &&
@@ -498,7 +484,7 @@ function install(; maxcount::Integer = 3)
         throw(ArgumentError("`maxcount` must be greater than or equal to one"))
     end
     _assert_pkg_server_env_var_is_set()
-    server = get_pkg_server()
+    server = Pkg.pkg_server()::AbstractString
     auth_handler = generate_auth_handler(maxcount)
     @static if PkgAuthentication.is_new_auth_mechanism()
         Pkg.PlatformEngines.register_auth_error_handler(server, auth_handler)
