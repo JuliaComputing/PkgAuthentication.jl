@@ -1,7 +1,11 @@
-
 module PkgAuthentication
 
-using Downloads, Random, JSON, Pkg
+import Downloads
+import JSON
+import Pkg
+import Random
+
+const pkg_server_env_var_name = "JULIA_PKG_SERVER"
 
 ## abstract state types
 
@@ -18,22 +22,89 @@ abstract type Failure <: State end
 
 ## authentication state machine
 
+function _assert_pkg_server_env_var_is_set()
+    if !haskey(ENV, pkg_server_env_var_name)
+        msg = "The `$(pkg_server_env_var_name)` environment variable must be set"
+        throw(ErrorException(msg))
+    end
+    return nothing
+end
+
 """
-    authenticate(pkgserver::AbstractString)
+    authenticate(server::AbstractString)
 
-Starts browser based pkg-server authentication (blocking).
+Starts interactive (blocking) browser-based Pkg server authentication for the Pkg
+server specified by `server`. Also sets the `$(pkg_server_env_var_name)` environment
+variable to `server`.
 
-`pkgserver` must be a URL pointing to a server that provides the `/pkgserver/challenge`,
-`/pkgserver/response`, and `/pkgserver/claimtoken` endpoints.
+`server` must be the URL of a valid Pkg server.
+
+## Example usage
+
+```julia
+julia> PkgAuthentication.authenticate("my-pkg-server.example.com")
+```
 """
 function authenticate(
     server::AbstractString;
-    force::Bool = false,
-    tries::Integer = 1,
+    auth_suffix::Union{String, Nothing} = nothing,
+    force::Union{Bool, Nothing} = nothing,
+    tries::Union{Integer, Nothing} = nothing,
 )::Union{Success, Failure}
-    server = strip(server, '/')
+    ENV[pkg_server_env_var_name] = server
+    authenticate(;
+        auth_suffix = auth_suffix,
+        force = force,
+        tries = tries,
+    )
+end
+
+"""
+    authenticate()
+
+Starts interactive (blocking) browser-based Pkg server authentication for the Pkg
+server specified in the `$(pkg_server_env_var_name)` environment variable.
+
+Before calling this method, the `$(pkg_server_env_var_name)` environment variable
+must be set to the URL of a valid Pkg server.
+
+## Example usage
+
+```julia
+julia> PkgAuthentication.authenticate()
+```
+"""
+function authenticate(;
+    auth_suffix::Union{String, Nothing} = nothing,
+    force::Union{Bool, Nothing} = nothing,
+    tries::Union{Integer, Nothing} = nothing,
+)::Union{Success, Failure}
+    if auth_suffix === nothing
+        # If the user does not provide the `auth_suffix` kwarg, we will append
+        # "/auth" at the end of the Pkg server URL.
+        #
+        # If the user does provide the `auth_suffix` kwarg, we will append
+        # "/$(auth_suffix)" at the end of the Pkg server URL.
+        auth_suffix = "auth"
+    end
+    if force === nothing
+        force = false
+    end
+    if tries === nothing
+        tries = 1
+    end
+    if tries < 1
+        throw(ArgumentError("`tries` must be greater than or equal to one"))
+    end
+
+    _assert_pkg_server_env_var_is_set()
+
+    server = get_pkg_server()::String
+    server = rstrip(server, '/')
+    server = string(server, "/", auth_suffix)
 
     local state
+
     for i in 1:tries
         initial = force ? NoAuthentication : NeedAuthentication
 
@@ -78,14 +149,14 @@ end
 function step(state::NoAuthentication)::Union{RequestLogin, Failure}
     challenge = Random.randstring(32)
     output = IOBuffer()
-    response = request(
+    response = Downloads.request(
         string(state.server, "/challenge"),
         method = "POST",
         input = IOBuffer(challenge),
         output = output,
         throw = false,
     )
-    if response isa Response && response.status == 200
+    if response isa Downloads.Response && response.status == 200
         return RequestLogin(state.server, challenge, String(take!(output)))
     else
         return HttpError(response)
@@ -117,7 +188,7 @@ function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication, Failure}
     refresh_token = state.token["refresh_token"]
     headers = ["Authorization" => "Bearer $refresh_token"]
     output = IOBuffer()
-    response = request(
+    response = Downloads.request(
         state.token["refresh_url"],
         method = "GET",
         headers = headers,
@@ -125,7 +196,7 @@ function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication, Failure}
         throw = false,
     )
     # errors are recoverable by just getting a new token:
-    if response isa Response && response.status == 200
+    if response isa Downloads.Response && response.status == 200
         try
             body = JSON.parse(String(take!(output)))
             if haskey(body, "token")
@@ -211,7 +282,7 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
 
     output = IOBuffer()
     data = """{ "challenge": "$(state.challenge)", "response": "$(state.response)" }"""
-    response = request(
+    response = Downloads.request(
         string(state.server, "/claimtoken"),
         method = "POST",
         input = IOBuffer(data),
@@ -219,7 +290,7 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
         throw = false,
     )
 
-    if response isa Response && response.status == 200
+    if response isa Downloads.Response && response.status == 200
         body = try
             JSON.parse(String(take!(output)))
         catch err
@@ -275,6 +346,21 @@ function HttpError(response::Downloads.RequestError)::HttpError
 end
 
 ## utils
+
+@static if Base.VERSION >= v"1.4-"
+    # Note that we add `::Union{String, Nothing}` to force conversion from `SubString` to `String`
+    get_pkg_server()::Union{String, Nothing} = Pkg.pkg_server()
+else
+    # This function does not exist in Julia 1.3
+    # Note that we add `::Union{String, Nothing}` to force conversion from `SubString` to `String`
+    function get_pkg_server()::Union{String, Nothing}
+        server = get(ENV, "JULIA_PKG_SERVER", "https://pkg.julialang.org")
+        isempty(server) && return nothing
+        startswith(server, r"\w+://") || (server = "https://$server")
+        return rstrip(server, '/')
+    end
+end
+
 is_new_auth_mechanism() =
     isdefined(Pkg, :PlatformEngines) &&
     isdefined(Pkg.PlatformEngines, :get_server_dir) &&
@@ -287,20 +373,24 @@ is_token_valid(toml) =
     (get(toml, "expires_at", nothing) isa Union{Integer, AbstractFloat} ||
      get(toml, "expires", nothing) isa Union{Integer, AbstractFloat})
 
-# This implementation of `get_server_dir` handles `domain:port` servers correctly (fixed on Pkg#master but not in older Julia versions).
-function get_server_dir(url::AbstractString, server=Pkg.pkg_server())
-    server === nothing && return
-    url == server || startswith(url, "$server/") || return
-    m = match(r"^\w+://(?:[^\\/@]+@)?([^\\/:]+)(?:$|/|:)", server)
-    if m === nothing
-        @warn "malformed Pkg server value" server
-        return
+@static if Base.VERSION >= v"1.10-" # TODO: change this to "1.9-" if we are able to fix Pkg in time for 1.9
+    const get_server_dir = Pkg.PlatformEngines.get_server_dir
+else
+    # This implementation of `get_server_dir` handles `domain:port` servers correctly (fixed on Pkg#master but not in older Julia versions).
+    function get_server_dir(url::AbstractString, server = get_pkg_server())
+        server === nothing && return
+        url == server || startswith(url, "$server/") || return
+        m = match(r"^\w+://(?:[^\\/@]+@)?([^\\/:]+)(?:$|/|:)", server)
+        if m === nothing
+            @warn "malformed Pkg server value" server
+            return
+        end
+        joinpath(Pkg.depots1(), "servers", m.captures[1])
     end
-    joinpath(Pkg.depots1(), "servers", m.captures[1])
 end
 
 function token_path(url::AbstractString)
-    if is_new_auth_mechanism()
+    @static if is_new_auth_mechanism()
         server_dir = get_server_dir(url)
         if server_dir !== nothing
             return joinpath(server_dir, "auth.toml")
@@ -354,27 +444,75 @@ function open_browser(url::AbstractString)
 end
 
 """
-    install(server = nothing; maxcount = 3)
+    install(server::AbstractString; maxcount = 3)
 
-Install Pkg authentication hooks for `Pkg.pkg_server()`.
+Install Pkg authentication hooks for the Pkg server specified by `server`. Also
+sets the `$(pkg_server_env_var_name)` environment variable to `server`.
 
-Will instead use `server` (and set the `JULIA_PKG_SERVER` environment variable accordingly) if given.
+`server` must be the URL of a valid Pkg server.
+
 `maxcount` determines the number of retries.
 
-Julia versions older than 1.4 do not support authentication hooks, so this function will force
-authentication right away.
+!!! compat "Julia 1.4"
+    Pkg authentication hooks require at least Julia 1.4. On earlier versions, this
+    method will instead force authentication immediately.
+
+## Example usage
+
+```julia
+julia> PkgAuthentication.install("my-pkg-server.example.com")
+
+julia> PkgAuthentication.install("my-pkg-server.example.com"; maxcount = 5)
+```
 """
-function install(server = nothing; maxcount = 3)
-    if server !== nothing
-        ENV["JULIA_PKG_SERVER"] = server
+function install(server::AbstractString; maxcount::Integer = 3)
+    ENV[pkg_server_env_var_name] = server
+    return install(; maxcount = maxcount)
+end
+
+"""
+    install(; maxcount = 3)
+
+Install Pkg authentication hooks for the Pkg server specified in the `$(pkg_server_env_var_name)`
+environment variable.
+
+Before calling this method, the `$(pkg_server_env_var_name)` environment variable
+must be set to the URL of a valid Pkg server.
+
+`maxcount` determines the number of retries.
+
+!!! compat "Julia 1.4"
+    Pkg authentication hooks require at least Julia 1.4. On earlier versions, this
+    method will instead force authentication immediately.
+
+## Example usage
+
+```julia
+julia> PkgAuthentication.install()
+
+julia> PkgAuthentication.install(; maxcount = 5)
+```
+"""
+function install(; maxcount::Integer = 3)
+    if maxcount < 1
+        throw(ArgumentError("`maxcount` must be greater than or equal to one"))
     end
-    server = string(Pkg.pkg_server())
+    _assert_pkg_server_env_var_is_set()
+    server = get_pkg_server()
+    auth_handler = generate_auth_handler(maxcount)
+    @static if PkgAuthentication.is_new_auth_mechanism()
+        Pkg.PlatformEngines.register_auth_error_handler(server, auth_handler)
+    else
+        # old Julia versions don't support auth hooks, so let's authenticate now and be done with it
+        authenticate(server)
+    end
+end
 
-    failed_auth_count = 0
-
-    authenticate = (url, svr, err) -> begin
-        ret = PkgAuthentication.authenticate(string(svr, "/auth"), tries = 2)
-        if ret isa PkgAuthentication.Success
+function generate_auth_handler(maxcount::Integer)
+    auth_handler = (url, server, err) -> begin
+        failed_auth_count = 0
+        ret = authenticate(server; tries = 2)
+        if ret isa Success
             failed_auth_count = 0
             @debug "Authentication successful."
         else
@@ -388,17 +526,7 @@ function install(server = nothing; maxcount = 3)
         end
         return true, true # handled, and Pkg should try again now
     end
-
-    register_auth_handler = (pkgserver::Union{Regex, AbstractString}) -> begin
-        return Pkg.PlatformEngines.register_auth_error_handler(pkgserver, authenticate)
-    end
-
-    if PkgAuthentication.is_new_auth_mechanism()
-        register_auth_handler(server)
-    else
-        # old Julia versions don't support auth hooks, so let's authenticate now and be done with it
-        authenticate(server)
-    end
+    return auth_handler
 end
 
 end # module

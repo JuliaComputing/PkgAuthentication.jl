@@ -1,6 +1,6 @@
 using LightGraphs, PkgAuthentication, GraphPlot, Cairo, Compose
 
-file = joinpath(@__DIR__, "src/PkgAuthentication.jl")
+file = joinpath(dirname(@__DIR__), "src", "PkgAuthentication.jl")
 
 g = SimpleDiGraph()
 lines = readlines(file)
