@@ -1,6 +1,12 @@
 using LightGraphs, PkgAuthentication, GraphPlot, Cairo, Compose
 
-file = joinpath(dirname(@__DIR__), "src", "PkgAuthentication.jl")
+const bin_dir = @__DIR__
+const root_dir = dirname(bin_dir)
+const src_dir = joinpath(root_dir, "src")
+const docs_dir = joinpath(root_dir, "docs")
+const docs_assets_dir = joinpath(docs_dir, "assets")
+
+file = joinpath(src_dir, "PkgAuthentication.jl")
 
 g = SimpleDiGraph()
 lines = readlines(file)
@@ -19,4 +25,4 @@ for line in lines
     end
 end
 plot = gplot(g, nodelabel=vertices, linetype="curve")
-draw(PNG(joinpath(@__DIR__, "structure.png"), 16cm, 16cm), plot)
+draw(PNG(joinpath(docs_assets_dir, "structure.png"), 16cm, 16cm), plot)

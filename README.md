@@ -66,6 +66,4 @@ julia> Pkg.Registry.update()
 
 ## Implementation
 
-Authentication is implemented with the following state machine:
-
-![State machine](assets/structure.png)
+For implementation details, please see [`docs/internals.md`](docs/internals.md).
