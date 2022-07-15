@@ -371,22 +371,24 @@ else
     end
 end
 
-function _get_server_dir(
-        url::AbstractString,
-        server::Union{AbstractString, Nothing},
-    )
-    server === nothing && return
-    url == server || startswith(url, "$server/") || return
-    m = match(r"^\w+://([^\\/]+)(?:$|/)", server)
-    if m === nothing
-        @warn "malformed Pkg server value" server
-        return
+@static if Base.VERSION >= v"1.10-" # TODO: change this to 1.9 once the nightlies have updated
+    const _get_server_dir = Pkg.PlatformEngines.get_server_dir
+else
+    function _get_server_dir(
+            url::AbstractString,
+            server::AbstractString,
+        )
+        server === nothing && return
+        url == server || startswith(url, "$server/") || return
+        m = match(r"^\w+://(?:[^\\/@]+@)?([^\\/:]+)(?:$|/|:)", server)
+        if m === nothing
+            @warn "malformed Pkg server value" server
+            return
+        end
+        joinpath(Pkg.depots1(), "servers", m.captures[1])
     end
-    isempty(Base.DEPOT_PATH) && return
-    invalid_filename_chars = [':', '/', '<', '>', '"', '/', '\\', '|', '?', '*']
-    dir = join(replace(c -> c in invalid_filename_chars ? '_' : c, collect(String(only(m.captures)))))
-    return joinpath(Pkg.depots1(), "servers", dir)
 end
+
 function get_server_dir(
         url::AbstractString,
         server::Union{AbstractString, Nothing} = pkg_server(),
