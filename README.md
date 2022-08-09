@@ -7,7 +7,7 @@ Interactive browser-based authentication to private Julia Pkg servers.
 #### Step 1: Make sure that PkgAuthentication.jl is installed in the default global Julia package environment (`v1.x`)
 
 ```julia
-julia> delete!(ENV, "JULIA_PKG_SERVER")
+julia> delete!(ENV, "JULIA_PKG_SERVER");
 
 julia> import Pkg
 

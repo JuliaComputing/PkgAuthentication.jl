@@ -99,7 +99,7 @@ function authenticate(;
 
     _assert_pkg_server_env_var_is_set()
 
-    server = get_pkg_server()::String
+    server = pkg_server()
     server = rstrip(server, '/')
     server = string(server, "/", auth_suffix)
 
@@ -347,20 +347,6 @@ end
 
 ## utils
 
-@static if Base.VERSION >= v"1.4-"
-    # Note that we add `::Union{String, Nothing}` to force conversion from `SubString` to `String`
-    get_pkg_server()::Union{String, Nothing} = Pkg.pkg_server()
-else
-    # This function does not exist in Julia 1.3
-    # Note that we add `::Union{String, Nothing}` to force conversion from `SubString` to `String`
-    function get_pkg_server()::Union{String, Nothing}
-        server = get(ENV, "JULIA_PKG_SERVER", "https://pkg.julialang.org")
-        isempty(server) && return nothing
-        startswith(server, r"\w+://") || (server = "https://$server")
-        return rstrip(server, '/')
-    end
-end
-
 is_new_auth_mechanism() =
     isdefined(Pkg, :PlatformEngines) &&
     isdefined(Pkg.PlatformEngines, :get_server_dir) &&
@@ -373,11 +359,25 @@ is_token_valid(toml) =
     (get(toml, "expires_at", nothing) isa Union{Integer, AbstractFloat} ||
      get(toml, "expires", nothing) isa Union{Integer, AbstractFloat})
 
-@static if Base.VERSION >= v"1.10-" # TODO: change this to "1.9-" if we are able to fix Pkg in time for 1.9
-    const get_server_dir = Pkg.PlatformEngines.get_server_dir
+@static if Base.VERSION >= v"1.4-"
+    const pkg_server = Pkg.pkg_server
 else
-    # This implementation of `get_server_dir` handles `domain:port` servers correctly (fixed on Pkg#master but not in older Julia versions).
-    function get_server_dir(url::AbstractString, server = get_pkg_server())
+    # This function does not exist in Julia 1.3
+    function pkg_server()
+        server = get(ENV, "JULIA_PKG_SERVER", "https://pkg.julialang.org")
+        isempty(server) && return nothing
+        startswith(server, r"\w+://") || (server = "https://$server")
+        return rstrip(server, '/')
+    end
+end
+
+@static if Base.VERSION >= v"1.10-" # TODO: change this to 1.9 once the nightlies have updated
+    const _get_server_dir = Pkg.PlatformEngines.get_server_dir
+else
+    function _get_server_dir(
+            url::AbstractString,
+            server::AbstractString,
+        )
         server === nothing && return
         url == server || startswith(url, "$server/") || return
         m = match(r"^\w+://(?:[^\\/@]+@)?([^\\/:]+)(?:$|/|:)", server)
@@ -389,6 +389,20 @@ else
     end
 end
 
+function get_server_dir(
+        url::AbstractString,
+        server::Union{AbstractString, Nothing} = pkg_server(),
+    )
+    server_dir_pkgauth = _get_server_dir(url, server)
+    server_dir_pkg = Pkg.PlatformEngines.get_server_dir(url, server)
+    if server_dir_pkgauth != server_dir_pkg
+        msg = "The PkgAuthentication server directory is not equal to the Pkg server directory." *
+              "Unexpected behavior may occur."
+        @warn msg server_dir_pkgauth server_dir_pkg
+    end
+    return server_dir_pkgauth
+end
+
 function token_path(url::AbstractString)
     @static if is_new_auth_mechanism()
         server_dir = get_server_dir(url)
@@ -398,7 +412,7 @@ function token_path(url::AbstractString)
     end
     # older auth mechanism uses a different token location
     default = joinpath(Pkg.depots1(), "token.toml")
-    get(ENV, "JULIA_PKG_TOKEN_PATH", default)
+    return get(ENV, "JULIA_PKG_TOKEN_PATH", default)
 end
 
 const OPEN_BROWSER_HOOK = Ref{Union{Base.Callable, Nothing}}(nothing)
@@ -498,7 +512,7 @@ function install(; maxcount::Integer = 3)
         throw(ArgumentError("`maxcount` must be greater than or equal to one"))
     end
     _assert_pkg_server_env_var_is_set()
-    server = get_pkg_server()
+    server = String(pkg_server())
     auth_handler = generate_auth_handler(maxcount)
     @static if PkgAuthentication.is_new_auth_mechanism()
         Pkg.PlatformEngines.register_auth_error_handler(server, auth_handler)
