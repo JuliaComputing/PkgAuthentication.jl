@@ -60,7 +60,7 @@ function authenticate(
     end
     # Even if `modify_environment` is `false`, we still need to set the environment
     # variable for the duration of the `authenticate` call.
-    withenv(pkg_server_env_var_name => server)
+    withenv(pkg_server_env_var_name => server) do
         authenticate(;
             auth_suffix = auth_suffix,
             force = force,
