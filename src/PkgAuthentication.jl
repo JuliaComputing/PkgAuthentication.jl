@@ -31,13 +31,16 @@ function _assert_pkg_server_env_var_is_set()
 end
 
 """
-    authenticate(server::AbstractString)
+    authenticate(server::AbstractString; kwargs...)
 
 Starts interactive (blocking) browser-based Pkg server authentication for the Pkg
 server specified by `server`. Also sets the `$(pkg_server_env_var_name)` environment
 variable to `server`.
 
 `server` must be the URL of a valid Pkg server.
+
+## Keyword arguments
+- `modify_environment::Bool = true`: Set the `$(pkg_server_env_var_name)` environment variable to server.
 
 ## Example usage
 
@@ -50,13 +53,20 @@ function authenticate(
     auth_suffix::Union{String, Nothing} = nothing,
     force::Union{Bool, Nothing} = nothing,
     tries::Union{Integer, Nothing} = nothing,
+    modify_environment::Bool = true,
 )::Union{Success, Failure}
-    ENV[pkg_server_env_var_name] = server
-    authenticate(;
-        auth_suffix = auth_suffix,
-        force = force,
-        tries = tries,
-    )
+    if modify_environment
+        ENV[pkg_server_env_var_name] = server
+    end
+    # Even if `modify_environment` is `false`, we still need to set the environment
+    # variable for the duration of the `authenticate` call.
+    withenv(pkg_server_env_var_name => server)
+        authenticate(;
+            auth_suffix = auth_suffix,
+            force = force,
+            tries = tries,
+        )
+    end
 end
 
 """
