@@ -40,7 +40,7 @@ variable to `server`.
 `server` must be the URL of a valid Pkg server.
 
 ## Keyword arguments
-- `modify_environment::Bool = true`: Set the `$(pkg_server_env_var_name)` environment variable to `server`.
+- `modify_environment::Bool = true`: Set the `$(pkg_server_env_var_name)` environment variable to `server`. In package code, this should probably be set to `false`, so that the package would not have unexpected global side effects.
 
 ## Example usage
 
