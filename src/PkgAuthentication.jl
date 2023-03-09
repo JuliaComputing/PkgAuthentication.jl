@@ -23,8 +23,8 @@ abstract type Failure <: State end
 ## authentication state machine
 
 function _assert_pkg_server_env_var_is_set()
-    if !haskey(ENV, pkg_server_env_var_name)
-        msg = "The `$(pkg_server_env_var_name)` environment variable must be set"
+    if isempty(strip(get(ENV, pkg_server_env_var_name, "")))
+        msg = "The `$(pkg_server_env_var_name)` environment variable must be set and non-empty"
         throw(ErrorException(msg))
     end
     return nothing
