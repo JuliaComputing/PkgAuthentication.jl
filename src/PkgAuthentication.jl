@@ -210,8 +210,6 @@ function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication, Failure}
         @debug "request for refreshing token failed" exception=(err, catch_backtrace())
         return NoAuthentication(state.server)
     end
-
-    return GenericError(response)
 end
 
 struct HasNewToken <: State
