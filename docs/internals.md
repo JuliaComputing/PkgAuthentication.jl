@@ -1,6 +1,6 @@
-# Implementation notes
+# Internal implementation notes
 
-The authentication control flow is implemented as the following state machine, starting from the `NeedAuthentication` state, and finish in either `Success` or `Failure`.
+The authentication control flow is implemented as the following state machine, starting from the `NeedAuthentication` state, and finishing in either `Success` or `Failure`.
 
 ```mermaid
 ---
