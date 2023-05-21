@@ -40,7 +40,7 @@ stateDiagram-v2
 
     NoAuthentication --> RequestLogin
     NoAuthentication --> Failure
-    note right of NoAuthentication
+    note left of NoAuthentication
         Attempts to acquire an OAuth challenge from the Pkg server.
         If successful, proceeds to RequestLogin, or to Failure
         otherwise.
@@ -49,7 +49,7 @@ stateDiagram-v2
     HasNewToken --> HasNewToken
     HasNewToken --> Success
     HasNewToken --> Failure
-    note right of HasNewToken
+    note left of HasNewToken
         Takes the token from the previous step and writes it to the
         auth.toml file. In order to handle potential race conditions
         with other writes, it will check that the write was succeful,
@@ -70,10 +70,13 @@ stateDiagram-v2
     ClaimToken --> ClaimToken
     ClaimToken --> HasNewToken
     ClaimToken --> Failure
-    note right of ClaimToken
+    note left of ClaimToken
         Starts polling the Pkg server's OAuth token claiming endpoint,
         returning to ClaimToken while the polling is happening. Proceeds
         to HasNewToken if it successfully acquires a token, or to Failure
         if the polling times out, or there is an unexpected error.
     end note
+
+    Success --> [*]
+    Failure --> [*]
 ```
