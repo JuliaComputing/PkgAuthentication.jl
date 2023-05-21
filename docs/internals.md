@@ -1,6 +1,6 @@
 # Internal implementation notes
 
-The authentication control flow is implemented as the following state machine, starting from the `NeedAuthentication` state, and finishing in either `Success` or `Failure`.
+The authentication control flow is implemented as the following state machine, starting from the `NeedAuthentication` state (or `NoAuthentication` if `force=true` is passed to `authenticate`), and finishing in either `Success` or `Failure`.
 
 ```mermaid
 ---
@@ -11,6 +11,7 @@ stateDiagram-v2
     direction LR
 
     [*] --> NeedAuthentication
+    [*] --> NoAuthentication
 
     NeedAuthentication --> HasToken
     NeedAuthentication --> NoAuthentication
