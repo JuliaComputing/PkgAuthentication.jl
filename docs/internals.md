@@ -1,22 +1,27 @@
 # Internal implementation notes
 
-The authentication control flow is implemented as the following state machine, starting from the `NeedAuthentication` state (or `NoAuthentication` if `force=true` is passed to `authenticate`), and finishing in either `Success` or `Failure`.
+The authentication control flow is implemented as the following state machine, starting from the `NeedAuthentication`
+state (or `NoAuthentication` if `force=true` is passed to `authenticate`), and finishing in either `Success` or `Failure`.
 
 ```mermaid
 ---
 title: PkgAuthentication state machine diagram
+theme: 'base'
+themeVariables:
+    noteTextColor: '#222'
 ---
 
 stateDiagram-v2
-    direction LR
 
     [*] --> NeedAuthentication
     [*] --> NoAuthentication
 
-    ClaimToken --> ClaimToken
-    ClaimToken --> HasNewToken
-    ClaimToken --> Failure
-    note right of ClaimToken
+    state state1 <<choice>>
+    ClaimToken --> state1
+    ClaimToken --> ClaimToken: retry
+    state1 --> HasNewToken
+    state1 --> Failure
+    note left of ClaimToken
         Starts polling the Pkg server's OAuth token claiming
         endpoint, returning to ClaimToken while the polling is
         happening. Proceeds to HasNewToken if it successfully
@@ -25,10 +30,12 @@ stateDiagram-v2
     end note
 
 
-    HasNewToken --> HasNewToken
-    HasNewToken --> Success
-    HasNewToken --> Failure
-    note right of HasNewToken
+    state state2 <<choice>>
+    HasNewToken --> state2
+    HasNewToken --> HasNewToken: retry
+    state2 --> Success
+    state2 --> Failure
+    note left of HasNewToken
         Takes the token from the previous step and writes it to
         the auth.toml file. In order to handle potential race
         conditions with other writes, it will check that the
@@ -38,43 +45,53 @@ stateDiagram-v2
         if there is an unexpected failure.
     end note
 
-    HasToken --> NeedRefresh
-    HasToken --> Success
-    note right of HasToken
+    state state3 <<choice>>
+    HasToken --> state3
+    state3 --> NeedRefresh
+    state3 --> Success
+    note left of HasToken
         If the token is valid (i.e. not expired, based on the
         expiry times in the auth.toml file), proceeds to Success.
         Otherwise, proceeds to NeedRefresh.
     end note
 
-    NeedAuthentication --> HasToken
-    NeedAuthentication --> NoAuthentication
-    note right of NeedAuthentication
+    state state4 <<choice>>
+    NeedAuthentication --> state4
+    state4 --> HasToken
+    state4 --> NoAuthentication
+    note left of NeedAuthentication
         Checks if a syntactically valid auth.toml token file
         exists for the requested server (but does not check
         whether it has expired or not). Proceeds to HasToken if
         it exists, or NoAuthentication if not.
     end note
 
-    NeedRefresh --> HasNewToken
-    NeedRefresh --> NoAuthentication
-    note right of NeedRefresh
+    state state5 <<choice>>
+    NeedRefresh --> state5
+    state5 --> HasNewToken
+    state5 --> NoAuthentication
+    note left of NeedRefresh
         Attempts to acquire a new access token by using the
         refresh token in the auth.toml. If the refresh succeeds,
         it will proceed to HasNewToken, or to NoAuthentication if
         it fails.
     end note
 
-    NoAuthentication --> RequestLogin
-    NoAuthentication --> Failure
-    note right of NoAuthentication
+    state state6 <<choice>>
+    NoAuthentication --> state6
+    state6 --> RequestLogin
+    state6 --> Failure
+    note left of NoAuthentication
         Attempts to acquire an OAuth challenge from the Pkg
         server. If successful, proceeds to RequestLogin, or to
         Failure otherwise.
     end note
 
-    RequestLogin --> ClaimToken
-    RequestLogin --> Failure
-    note right of RequestLogin
+    state state7 <<choice>>
+    RequestLogin --> state7
+    state7 --> ClaimToken
+    state7 --> Failure
+    note left of RequestLogin
         Presents the in-browser step of the OAuth authentication
         process to the user (e.g. by opening the Pkg server's
         login page in the user's browser). Proceeds to ClaimToken

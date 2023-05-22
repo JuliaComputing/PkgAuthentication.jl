@@ -9,7 +9,8 @@ buffer = let buffer = IOBuffer(write=true)
     write(buffer, """
     # Internal implementation notes
 
-    The authentication control flow is implemented as the following state machine, starting from the `NeedAuthentication` state (or `NoAuthentication` if `force=true` is passed to `authenticate`), and finishing in either `Success` or `Failure`.
+    The authentication control flow is implemented as the following state machine, starting from the `NeedAuthentication`
+    state (or `NoAuthentication` if `force=true` is passed to `authenticate`), and finishing in either `Success` or `Failure`.
 
     ```mermaid
     ---
@@ -17,7 +18,6 @@ buffer = let buffer = IOBuffer(write=true)
     ---
 
     stateDiagram-v2
-        direction LR
 
         [*] --> NeedAuthentication
         [*] --> NoAuthentication
@@ -33,6 +33,7 @@ buffer = let buffer = IOBuffer(write=true)
             all_targets[m[1]] = strip.(split(m[2], ','))
         end
     end
+    choice_index = 0
     for state in sort(InteractiveUtils.subtypes(PkgAuthentication.State), by=string)
         println(buffer)
         state_str = string(nameof(state))
@@ -41,15 +42,27 @@ buffer = let buffer = IOBuffer(write=true)
         if isempty(targets) && (state ∉ ignore_errors)
             @warn "Empty targets list for $state"
         elseif !isempty(targets)
-            for target in targets
-                println(buffer, "    $(state_str) --> $(target)")
+
+            if length(targets) > 1
+                choice_index += 1
+                println(buffer, "    state state$(choice_index) <<choice>>")
+                println(buffer, "    $(state_str) --> state$(choice_index)")
+                for target in targets
+                    if state_str == target
+                        println(buffer, "    $(state_str) --> $(target): retry")
+                    else
+                        println(buffer, "    state$(choice_index) --> $(target)")
+                    end
+                end
+            else
+                println(buffer, "    $(state_str) --> $(only(targets))")
             end
         end
         # Extract the docstring and put it into a mermaid note
         try
             docstr::Markdown.MD = Base.Docs.doc(state)
             docstr_text = docstr.meta[:results][1].text[1]
-            println(buffer, "    note right of $(state_str)")
+            println(buffer, "    note left of $(state_str)")
             TextWrap.print_wrapped(
                 buffer, docstr_text, width=65,
                 initial_indent = 8, subsequent_indent = 8,
