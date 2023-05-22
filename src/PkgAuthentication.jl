@@ -184,7 +184,7 @@ struct NeedRefresh <: State
     server::String
     token::Dict{String, Any}
 end
-function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication, Failure}
+function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication}
     refresh_token = state.token["refresh_token"]
     headers = ["Authorization" => "Bearer $refresh_token"]
     output = IOBuffer()
@@ -210,8 +210,6 @@ function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication, Failure}
         @debug "request for refreshing token failed" exception=(err, catch_backtrace())
         return NoAuthentication(state.server)
     end
-
-    return GenericError(response)
 end
 
 struct HasNewToken <: State
