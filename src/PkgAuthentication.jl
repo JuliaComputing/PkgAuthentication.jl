@@ -128,6 +128,11 @@ end
 
 ## initial states
 
+"""
+Checks if a syntactically valid auth.toml token file exists for the requested server
+(but does not check whether it has expired or not). Proceeds to HasToken if it exists,
+or NoAuthentication if not.
+"""
 struct NeedAuthentication <: State
     server::String
 end
@@ -145,6 +150,10 @@ function step(state::NeedAuthentication)::Union{HasToken, NoAuthentication}
     end
 end
 
+"""
+Attempts to acquire an OAuth challenge from the Pkg server. If successful, proceeds
+to RequestLogin, or to Failure otherwise.
+"""
 struct NoAuthentication <: State
     server::String
 end
@@ -167,6 +176,10 @@ end
 
 ## intermediate states
 
+"""
+If the token is valid (i.e. not expired, based on the expiry times in the auth.toml
+file), proceeds to Success. Otherwise, proceeds to NeedRefresh.
+"""
 struct HasToken <: State
     server::String
     mtime::Float64
@@ -182,6 +195,11 @@ function step(state::HasToken)::Union{NeedRefresh, Success}
     end
 end
 
+"""
+Attempts to acquire a new access token by using the refresh token in the auth.toml.
+If the refresh succeeds, it will proceed to HasNewToken, or to NoAuthentication if it
+fails.
+"""
 struct NeedRefresh <: State
     server::String
     token::Dict{String, Any}
@@ -227,6 +245,13 @@ function assert_dict_keys(dict::Dict, keys...; msg::AbstractString)
     end
 end
 
+"""
+Takes the token from the previous step and writes it to the auth.toml file. In order
+to handle potential race conditions with other writes, it will check that the write
+was successful, and will try again if it fails. If the write was successful, it proceeds
+to Success, or retries HasNewToken if it was not. May proceed to Failure if there is an
+unexpected failure.
+"""
 struct HasNewToken <: State
     server::String
     token::Dict{String, Any}
@@ -254,6 +279,11 @@ function step(state::HasNewToken)::Union{HasNewToken, Success, Failure}
     end
 end
 
+"""
+Presents the in-browser step of the OAuth authentication process to the user
+(e.g. by opening the Pkg server's login page in the user's browser). Proceeds to
+ClaimToken immediately, or to Failure if there was an unexpected failure.
+"""
 struct RequestLogin <: State
     server::String
     challenge::String
@@ -268,6 +298,11 @@ function step(state::RequestLogin)::Union{ClaimToken, Failure}
     end
 end
 
+"""
+Starts polling the Pkg server's OAuth token claiming endpoint, returning to ClaimToken
+while the polling is happening. Proceeds to HasNewToken if it successfully acquires a
+token, or to Failure if the polling times out, or there is an unexpected error.
+"""
 struct ClaimToken <: State
     server::String
     challenge::String
