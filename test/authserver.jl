@@ -1,5 +1,5 @@
 using HTTP, Random, JSON
-import Pkg: TOML
+import TOML
 
 const EXPIRY = 30
 const CHALLENGE_EXPIRY = 10
