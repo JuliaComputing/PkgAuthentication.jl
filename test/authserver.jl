@@ -1,4 +1,5 @@
 using HTTP, Random, JSON
+import Pkg: TOML
 
 const EXPIRY = 30
 const CHALLENGE_EXPIRY = 10
@@ -39,7 +40,7 @@ function response_handler(req)
     TOKEN[] = Dict(
         "user_name" => "firstname lastname",
         "user_email" => "user@email.com",
-        "id_token" => ID_TOKEN,
+        "id_token" => "full-" * ID_TOKEN,
         "refresh_token" => refresh_token,
         "refresh_url" => "http://localhost:$(PORT)/auth/renew/token.toml/v2/",
         "expires_in" => EXPIRY,
@@ -85,10 +86,9 @@ function renew_handler(req)
 
     TOKEN[]["refresh_token"] = Random.randstring(10)
     TOKEN[]["expires_at"] = ceil(Int, time() + EXPIRY)
+    TOKEN[]["id_token"] = "refresh-" * ID_TOKEN
 
-    return HTTP.Response(200, JSON.json(Dict(
-        "token" => TOKEN[]
-    )))
+    return HTTP.Response(200, sprint(TOML.print, TOKEN[]))
 end
 
 function check_validity(req)
