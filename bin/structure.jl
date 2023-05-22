@@ -23,7 +23,6 @@ buffer = let buffer = IOBuffer(write=true)
         [*] --> NoAuthentication
     """)
 
-    # We'll loop over
     all_targets = Dict{String,Vector{String}}()
     ignore_errors = (
         PkgAuthentication.Failure, PkgAuthentication.Success
@@ -37,6 +36,7 @@ buffer = let buffer = IOBuffer(write=true)
     for state in sort(InteractiveUtils.subtypes(PkgAuthentication.State), by=string)
         println(buffer)
         state_str = string(nameof(state))
+        # Generate the connecting arrows between the states
         targets = get(all_targets, state_str, String[])
         if isempty(targets) && (state ∉ ignore_errors)
             @warn "Empty targets list for $state"
