@@ -201,9 +201,9 @@ function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication, Failure}
         try
             body = Pkg.TOML.parse(String(take!(output)))
             let msg = "token refresh response"
-                assert_dict_keys(body, "access_token"; msg)
-                assert_dict_keys(body, "expires_in"; msg)
-                assert_dict_keys(body, "expires", "expires_at"; msg)
+                assert_dict_keys(body, "access_token"; msg=msg)
+                assert_dict_keys(body, "expires_in"; msg=msg)
+                assert_dict_keys(body, "expires", "expires_at"; msg=msg)
             end
             return HasNewToken(state.server, body)
         catch err
