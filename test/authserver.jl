@@ -41,6 +41,7 @@ function response_handler(req)
         "user_name" => "firstname lastname",
         "user_email" => "user@email.com",
         "id_token" => "full-" * ID_TOKEN,
+        "access_token" => "full-" * ID_TOKEN,
         "refresh_token" => refresh_token,
         "refresh_url" => "http://localhost:$(PORT)/auth/renew/token.toml/v2/",
         "expires_in" => EXPIRY,
@@ -87,6 +88,7 @@ function renew_handler(req)
     TOKEN[]["refresh_token"] = Random.randstring(10)
     TOKEN[]["expires_at"] = ceil(Int, time() + EXPIRY)
     TOKEN[]["id_token"] = "refresh-" * ID_TOKEN
+    TOKEN[]["access_token"] = "refresh-" * ID_TOKEN
 
     return HTTP.Response(200, sprint(TOML.print, TOKEN[]))
 end
