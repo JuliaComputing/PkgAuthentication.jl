@@ -4,6 +4,7 @@ import Downloads
 import JSON
 import Pkg
 import Random
+import TOML
 
 const pkg_server_env_var_name = "JULIA_PKG_SERVER"
 
@@ -132,7 +133,7 @@ end
 function step(state::NeedAuthentication)::Union{HasToken, NoAuthentication}
     path = token_path(state.server)
     if isfile(path)
-        toml = Pkg.TOML.parsefile(path)
+        toml = TOML.parsefile(path)
         if is_token_valid(toml)
             return HasToken(state.server, mtime(path), toml)
         else
@@ -226,9 +227,9 @@ function step(state::HasNewToken)::Union{HasNewToken, Success, Failure}
     mkpath(dirname(path))
     try
         open(path, "w") do io
-            Pkg.TOML.print(io, state.token)
+            TOML.print(io, state.token)
         end
-        if Pkg.TOML.parsefile(path) == state.token
+        if TOML.parsefile(path) == state.token
             return Success(state.token)
         else
             return HasNewToken(state.server, state.token, 0)
