@@ -122,6 +122,7 @@ function authenticate(;
         state = initial(server)
         try
             while !(isa(state, Success) || isa(state, Failure))
+                @debug "Calling step(::$(typeof(state)))"
                 state = step(state)
             end
         catch err
@@ -227,17 +228,30 @@ function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication}
     # errors are recoverable by just getting a new token:
     if response isa Downloads.Response && response.status == 200
         try
-            body = JSON.parse(String(take!(output)))
-            if haskey(body, "token")
-                return HasNewToken(state.server, body["token"])
+            body = TOML.parse(String(take!(output)))
+            let msg = "token refresh response"
+                assert_dict_keys(body, "access_token", "id_token"; msg=msg)
+                assert_dict_keys(body, "expires_in"; msg=msg)
+                assert_dict_keys(body, "expires", "expires_at"; msg=msg)
             end
+            return HasNewToken(state.server, body)
         catch err
             @debug "invalid body received while refreshing token" exception=(err, catch_backtrace())
         end
         return NoAuthentication(state.server)
     else
-        @debug "request for refreshing token failed" exception=(err, catch_backtrace())
+        @debug "request for refreshing token failed" response
         return NoAuthentication(state.server)
+    end
+end
+
+function assert_dict_keys(dict::Dict, keys...; msg::AbstractString)
+    any(haskey(dict, key) for key in keys) && return nothing
+    if length(keys) == 1
+        error("Key '$(first(keys))' not present in $msg")
+    else
+        keys = join(string.("'", keys, "'"), ", ")
+        error("None of $keys present in $msg")
     end
 end
 
