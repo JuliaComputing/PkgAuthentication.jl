@@ -339,7 +339,10 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
     sleep(state.poll_interval)
 
     output = IOBuffer()
-    data = """{ "challenge": "$(state.challenge)", "response": "$(state.response)" }"""
+    data = JSON.json(Dict(
+        "challenge" => state.challenge,
+        "response" => state.response,
+    ))
     response = Downloads.request(
         string(state.server, "/claimtoken"),
         method = "POST",
