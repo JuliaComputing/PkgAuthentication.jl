@@ -18,6 +18,7 @@ step(state::State) =
 struct Success <: State
     token::Dict{String, Any}
 end
+Base.show(io::IO, ::Success) = print(io, "Success(<REDACTED>)")
 
 abstract type Failure <: State end
 
@@ -146,6 +147,8 @@ or NoAuthentication if not.
 struct NeedAuthentication <: State
     server::String
 end
+Base.show(io::IO, s::NeedAuthentication) = print(io, "NeedAuthentication($(s.server))")
+
 function step(state::NeedAuthentication)::Union{HasToken, NoAuthentication}
     path = token_path(state.server)
     if isfile(path)
@@ -167,6 +170,8 @@ to RequestLogin, or to Failure otherwise.
 struct NoAuthentication <: State
     server::String
 end
+Base.show(io::IO, s::NoAuthentication) = print(io, "NoAuthentication($(s.server))")
+
 function step(state::NoAuthentication)::Union{RequestLogin, Failure}
     challenge = Random.randstring(32)
     output = IOBuffer()
@@ -195,6 +200,8 @@ struct HasToken <: State
     mtime::Float64
     token::Dict{String, Any}
 end
+Base.show(io::IO, s::HasToken) = print(io, "HasToken($(s.server), $(s.mtime), <REDACTED>)")
+
 function step(state::HasToken)::Union{NeedRefresh, Success}
     expiry = get(state.token, "expires_at", get(state.token, "expires", 0))
     expires_in = get(state.token, "expires_in", Inf)
@@ -214,6 +221,8 @@ struct NeedRefresh <: State
     server::String
     token::Dict{String, Any}
 end
+Base.show(io::IO, s::NeedRefresh) = print(io, "NeedRefresh($(s.server), <REDACTED>)")
+
 function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication}
     refresh_token = state.token["refresh_token"]
     headers = ["Authorization" => "Bearer $refresh_token"]
@@ -267,6 +276,8 @@ struct HasNewToken <: State
     token::Dict{String, Any}
     tries::Int
 end
+Base.show(io::IO, s::HasNewToken) = print(io, "HasNewToken($(s.server), <REDACTED>, $(s.tries))")
+
 HasNewToken(server, token) = HasNewToken(server, token, 0)
 function step(state::HasNewToken)::Union{HasNewToken, Success, Failure}
     if state.tries >= 3
@@ -299,6 +310,8 @@ struct RequestLogin <: State
     challenge::String
     response::String
 end
+Base.show(io::IO, s::RequestLogin) = print(io, "RequestLogin($(s.server), <REDACTED>, $(s.response))")
+
 function step(state::RequestLogin)::Union{ClaimToken, Failure}
     success = open_browser(string(state.server, "/response?", state.response))
     if success
@@ -324,6 +337,8 @@ struct ClaimToken <: State
     failures::Int
     max_failures::Int
 end
+Base.show(io::IO, s::ClaimToken) = print(io, "ClaimToken($(s.server), <REDACTED>, $(s.response), $(s.expiry), $(s.start_time), $(s.timeout), $(s.poll_interval), $(s.failures), $(s.max_failures))")
+
 ClaimToken(server, challenge, response, expiry = Inf, failures = 0) =
     ClaimToken(server, challenge, response, expiry, time(), 180, 2, failures, 10)
 

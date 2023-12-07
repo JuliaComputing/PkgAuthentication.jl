@@ -46,6 +46,7 @@ PkgAuthentication.register_open_browser_hook(url -> HTTP.get(url))
     @test success isa PkgAuthentication.Success
     @test success.token["expires_at"] > time()
     @test startswith(success.token["id_token"], "full-")
+    @test !occursin("id_token", sprint(show, success))
 
     sleeptimer = ceil(Int, success.token["expires_at"]  - time() + 1)
     @info "sleep for $(sleeptimer)s (until refresh necessary)"
@@ -54,6 +55,7 @@ PkgAuthentication.register_open_browser_hook(url -> HTTP.get(url))
     @info "testing auth refresh"
     success2 = PkgAuthentication.authenticate(test_pkg_server)
     @test success2 isa PkgAuthentication.Success
+    @test !occursin("id_token", sprint(show, success2))
     @test success2.token["expires_at"] > time()
     @test success2.token["refresh_token"] !== success.token["refresh_token"]
     @test startswith(success2.token["id_token"], "refresh-")
