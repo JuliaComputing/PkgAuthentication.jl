@@ -521,11 +521,11 @@ function open_browser(url::AbstractString)
                 return false
             end
         elseif Sys.iswindows()
-            run(`cmd /c "start $url"`)
+            run(`cmd /c "start $url"`; wait=false)
         elseif Sys.isapple()
-            run(`open $url`)
+            run(`open $url`; wait=false)
         elseif Sys.islinux() || Sys.isbsd()
-            run(`xdg-open $url`)
+            run(`xdg-open $url`; wait=false)
         end
     catch err
         @warn "There was a problem opening the authentication URL in a browser, please try opening this URL manually to authenticate." url, error = err
