@@ -358,6 +358,7 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
         "challenge" => state.challenge,
         "response" => state.response,
     ))
+    @debug "/claimtoken request" data
     response = Downloads.request(
         string(state.server, "/claimtoken"),
         method = "POST",
@@ -365,11 +366,13 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
         output = output,
         throw = false,
     )
+    @debug "/claimtoken response" response
 
     if response isa Downloads.Response && response.status == 200
         body = try
             JSON.parse(String(take!(output)))
         catch err
+            @debug "failed to parse response" ex=(err, catch_backtrace())
             return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures)
         end
 
