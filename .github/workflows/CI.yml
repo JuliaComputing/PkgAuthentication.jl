@@ -23,6 +23,9 @@ jobs:
           # Parts of this package depend on Pkg internals.
           # Because Pkg internals are allowed to change between Julia minor versions,
           # we should run CI on each minor version of Julia that we want to support.
+          # But it's fine to just run these with Linux, as not to make the matrix too
+          # big. Also, Julia 1.4.2 does not work on the macos-latest runner for some
+          # reason, failing with a linking error, so that also sidesteps that issue.
           - '1.3'
           - '1.4'
           - '1.5'
@@ -35,10 +38,23 @@ jobs:
           - 'nightly'
         os:
           - ubuntu-latest
-          - macOS-latest
-          - windows-latest
         arch:
           - x64
+        # We still want to run CI on Windows and MacOS for some Julia versions, so
+        # so doing that for nightly and the latest release.
+        include:
+          - os: macOS-latest
+            version: '1'
+            arch: x64
+          - os: windows-latest
+            version: '1'
+            arch: x64
+          - os: macOS-latest
+            version: 'nightly'
+            arch: x64
+          - os: windows-latest
+            version: 'nightly'
+            arch: x64
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
