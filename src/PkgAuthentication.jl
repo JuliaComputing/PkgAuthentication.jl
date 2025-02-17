@@ -6,6 +6,8 @@ import Pkg
 import Random
 import TOML
 
+include("helpers.jl")
+
 const pkg_server_env_var_name = "JULIA_PKG_SERVER"
 
 ## abstract state types
@@ -520,8 +522,8 @@ function open_browser(url::AbstractString)
                 @debug "error executing browser hook" exception=(err, catch_backtrace())
                 return false
             end
-        elseif Sys.iswindows()
-            run(`cmd /c "start $url"`; wait=false)
+        elseif Sys.iswindows() || detectwsl()
+            run(`cmd.exe /c "start $url"`; wait=false)
         elseif Sys.isapple()
             run(`open $url`; wait=false)
         elseif Sys.islinux() || Sys.isbsd()
