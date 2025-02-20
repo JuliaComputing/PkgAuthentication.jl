@@ -6,7 +6,7 @@ else
     # https://github.com/JuliaLang/julia/pull/57069
     function detectwsl()
         # We use the same approach as canonical/snapd do to detect WSL
-        islinux() && (
+        Sys.islinux() && (
             isfile("/proc/sys/fs/binfmt_misc/WSLInterop")
             || isdir("/run/WSL")
         )
