@@ -621,4 +621,6 @@ function generate_auth_handler(maxcount::Integer)
     return auth_handler
 end
 
+include("precompile.jl")
+
 end # module
