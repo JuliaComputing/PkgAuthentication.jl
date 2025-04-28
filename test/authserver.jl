@@ -4,9 +4,12 @@ import TOML
 const EXPIRY = 30
 const CHALLENGE_EXPIRY = 10
 const PORT = 8888
+const LEGACY_MODE = 1
+const DEVICE_FLOW_MODE = 2
 
 const ID_TOKEN = Random.randstring(100)
 const TOKEN = Ref(Dict())
+const MODE = Ref(LEGACY_MODE)
 
 challenge_response_map = Dict()
 challenge_timeout = Dict()
@@ -59,7 +62,7 @@ function claimtoken_handler(req)
     @show payload
     @show challenge_response_map
     if haskey(challenge_response_map, payload["challenge"]) &&
-       challenge_response_map[payload["challenge"]] == payload["response"]
+        challenge_response_map[payload["challenge"]] == payload["response"]
 
         delete!(challenge_response_map, payload["challenge"])
         delete!(response_challenge_map, payload["response"])
@@ -99,12 +102,101 @@ function check_validity(req)
     return HTTP.Response(200, payload == TOKEN[])
 end
 
+function set_mode_legacy(req)
+    MODE[] = LEGACY_MODE
+    return HTTP.Response(200)
+end
+
+function set_mode_device(req)
+    MODE[] = DEVICE_FLOW_MODE
+    return HTTP.Response(200)
+end
+
+function auth_configuration(req)
+    if MODE[] == LEGACY_MODE
+        return HTTP.Response(
+            200,
+            """ {
+                "device_flow_supported": false,
+                "refresh_url": "http://localhost:$PORT/auth/renew/token.toml/v2/"
+            } """,
+        )
+    else
+        return HTTP.Response(
+            200,
+            """ {
+                "device_flow_supported": true,
+                "refresh_url": "http://localhost:$PORT/auth/renew/token.toml/device/",
+                "device_authorization_endpoint": "http://localhost:$PORT/auth/device/code",
+                "token_endpoint": "http://localhost:$PORT/auth/token"
+            } """,
+        )
+    end
+end
+
+device_code_user_code_map = Dict{String, Any}()
+user_code_device_code_map = Dict{String, Any}()
+authenticated = Dict{String, Any}()
+function auth_device_code(req)
+    device_code = randstring(64)
+    user_code = randstring(8)
+    device_code_user_code_map[device_code] = user_code
+    user_code_device_code_map[user_code] = device_code
+    return HTTP.Response(
+        200,
+        """ {
+            "device_code": "$device_code",
+            "user_code": "$user_code",
+            "verification_uri_complete": "http://localhost:$PORT/auth/device?user_code=$user_code",
+            "expires_in": $CHALLENGE_EXPIRY
+        } """,
+    )
+end
+
+function auth_device(req)
+    params = HTTP.queryparams(req)
+    user_code = get(params, "user_code", "")
+    device_code = get(user_code_device_code_map, user_code, nothing)
+    if device_code === nothing
+        return HTTP.Response(400)
+    end
+    authenticated[device_code] = true
+    refresh_token = Random.randstring(10)
+    TOKEN[]["access_token"] = "device-$ID_TOKEN"
+    TOKEN[]["token_type"] = "bearer"
+    TOKEN[]["expires_in"] = EXPIRY
+    TOKEN[]["refresh_token"] = refresh_token
+    TOKEN[]["id_token"] = "device-$ID_TOKEN"
+    return HTTP.Response(200)
+end
+
+function auth_token(req)
+    p = split(String(req.body), "&")
+    d = Dict{String, Any}()
+    for l in p
+        kv = split(String(l), "=")
+        d[String(kv[1])] = String(kv[2])
+    end
+    device_code = get(d, "device_code", nothing)
+    if device_code === nothing || !get(authenticated, device_code, false)
+        return HTTP.Response(401)
+    end
+    return HTTP.Response(200, JSON.json(TOKEN[]))
+end
+
 router = HTTP.Router()
 HTTP.register!(router, "POST", "/auth/challenge", challenge_handler)
 HTTP.register!(router, "GET", "/auth/response", response_handler)
 HTTP.register!(router, "POST", "/auth/claimtoken", claimtoken_handler)
 HTTP.register!(router, "GET", "/auth/renew/token.toml/v2", renew_handler)
 HTTP.register!(router, "POST", "/auth/isvalid", check_validity)
+HTTP.register!(router, "GET", "/auth/configuration", auth_configuration)
+HTTP.register!(router, "POST", "/auth/device/code", auth_device_code)
+HTTP.register!(router, "GET", "/auth/device", auth_device)
+HTTP.register!(router, "POST", "/auth/token", auth_token)
+HTTP.register!(router, "GET", "/auth/renew/token.toml/device", renew_handler)
+HTTP.register!(router, "POST", "/set_mode/legacy", set_mode_legacy)
+HTTP.register!(router, "POST", "/set_mode/device", set_mode_device)
 
 function run()
     println("starting server")
