@@ -175,8 +175,21 @@ end
 Base.show(io::IO, s::NoAuthentication) = print(io, "NoAuthentication($(s.server))")
 
 function step(state::NoAuthentication)::Union{RequestLogin, Failure}
-    challenge = Random.randstring(32)
     output = IOBuffer()
+    # Try device flow first
+    response = Downloads.request(
+        string(state.server, "/dex/device/code"),
+        method = "POST",
+        input = IOBuffer("client_id=device&scopes=openid email profile offline_access"),
+        output = output,
+        throw = false,
+        headers = ["Accept" => "application/json", "Content-Type" => "application/x-www-form-urlencoded"],
+    )
+    if response isa Downloads.Response && response.status == 200
+        return RequestLogin(state.server, nothing, JSON.parse(String(take!(output))))
+    end
+
+    challenge = Random.randstring(32)
     response = Downloads.request(
         string(state.server, "/challenge"),
         method = "POST",
@@ -309,14 +322,22 @@ ClaimToken immediately, or to Failure if there was an unexpected failure.
 """
 struct RequestLogin <: State
     server::String
-    challenge::String
-    response::String
+    challenge::Union{Nothing, String}
+    response::Union{String, Dict{String, Any}}
 end
 Base.show(io::IO, s::RequestLogin) = print(io, "RequestLogin($(s.server), <REDACTED>, $(s.response))")
 
 function step(state::RequestLogin)::Union{ClaimToken, Failure}
-    success = open_browser(string(state.server, "/response?", state.response))
-    if success
+    url = if state.challenge === nothing
+        string(state.server, "/response?", state.response)
+    else
+        string(state.response["verification_uri_complete"])
+    end
+
+    success = open_browser(url)
+    if success && state.challenge === nothing
+        return ClaimToken(state.server, state.challenge, state.response, expiry=state.response["expires_in"])
+    elseif success
         return ClaimToken(state.server, state.challenge, state.response)
     else # this can only happen for the browser hook
         return GenericError("Failed to execute open_browser hook.")
@@ -330,8 +351,8 @@ token, or to Failure if the polling times out, or there is an unexpected error.
 """
 struct ClaimToken <: State
     server::String
-    challenge::String
-    response::String
+    challenge::Union{Nothing, String}
+    response::Union{String, Dict{String, Any}}
     expiry::Float64
     start_time::Float64
     timeout::Float64
@@ -356,19 +377,30 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
     sleep(state.poll_interval)
 
     output = IOBuffer()
-    data = JSON.json(Dict(
-        "challenge" => state.challenge,
-        "response" => state.response,
-    ))
-    response = Downloads.request(
-        string(state.server, "/claimtoken"),
-        method = "POST",
-        input = IOBuffer(data),
-        output = output,
-        throw = false,
-    )
+    if state.challenge === nothing
+        response = Downloads.request(
+            string(state.server, "/dex/token"),
+            method = "POST",
+            input = IOBuffer("client_id=device&scope=openid profile offline_access&grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code=$(state.response["device_code"])"),
+            output = output,
+            throw = false,
+            headers = ["Accept" => "application/json", "Content-Type" => "application/x-www-form-urlencoded"],
+        )
+    else
+        data = JSON.json(Dict(
+            "challenge" => state.challenge,
+            "response" => state.response,
+        ))
+        response = Downloads.request(
+            string(state.server, "/claimtoken"),
+            method = "POST",
+            input = IOBuffer(data),
+            output = output,
+            throw = false,
+        )
+    end
 
-    if response isa Downloads.Response && response.status == 200
+    if response isa Downloads.Response && response.status == 200 && state.challenge !== nothing
         body = try
             JSON.parse(String(take!(output)))
         catch err
@@ -382,6 +414,10 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
         else
             return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures)
         end
+    elseif response isa Downloads.Response && response.status == 200
+        return HasNewToken(state.server, JSON.parse(String(take!(output)))["access_token"])
+    elseif response isa Downloads.Response && response.status == 401 && state.challenge === nothing
+        return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures)
     else
         return HttpError(response)
     end
