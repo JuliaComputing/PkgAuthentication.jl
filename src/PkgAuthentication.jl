@@ -186,7 +186,9 @@ function step(state::NoAuthentication)::Union{RequestLogin, Failure}
         headers = ["Accept" => "application/json", "Content-Type" => "application/x-www-form-urlencoded"],
     )
     if response isa Downloads.Response && response.status == 200
-        return RequestLogin(state.server, nothing, JSON.parse(String(take!(output))))
+        body = JSON.parse(String(take!(output)))
+        body["client_id"] = "device"
+        return RequestLogin(state.server, "", body)
     end
 
     challenge = Random.randstring(32)
@@ -198,7 +200,7 @@ function step(state::NoAuthentication)::Union{RequestLogin, Failure}
         throw = false,
     )
     if response isa Downloads.Response && response.status == 200
-        return RequestLogin(state.server, challenge, String(take!(output)))
+        return RequestLogin(state.server, challenge, String(take!(output)), false)
     else
         return HttpError(response)
     end
@@ -240,15 +242,26 @@ Base.show(io::IO, s::NeedRefresh) = print(io, "NeedRefresh($(s.server), <REDACTE
 
 function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication}
     refresh_token = state.token["refresh_token"]
-    headers = ["Authorization" => "Bearer $refresh_token"]
     output = IOBuffer()
-    response = Downloads.request(
-        state.token["refresh_url"],
-        method = "GET",
-        headers = headers,
-        output = output,
-        throw = false,
-    )
+    is_device = get(state.token, "client_id", nothing) == "device"
+    response = if is_device
+        Downloads.request(
+            "$(state.server)/dex/token",
+            method = "POST",
+            headers = ["Content-Type" => "application/x-www-form-urlencoded"],
+            input = IOBuffer("grant_type=refresh_token&client_id=device&refresh_token=$refresh_token"),
+            output = output,
+            throw = false,
+        )
+    else
+        Downloads.request(
+            state.token["refresh_url"],
+            method = "GET",
+            headers = ["Authorization" => "Bearer $refresh_token"],
+            output = output,
+            throw = false,
+        )
+    end
     # errors are recoverable by just getting a new token:
     if response isa Downloads.Response && response.status == 200
         try
@@ -257,6 +270,9 @@ function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication}
                 assert_dict_keys(body, "access_token", "id_token"; msg=msg)
                 assert_dict_keys(body, "expires_in"; msg=msg)
                 assert_dict_keys(body, "expires", "expires_at"; msg=msg)
+            end
+            if is_device
+                body["client_id"] = "device"
             end
             return HasNewToken(state.server, body)
         catch err
@@ -322,20 +338,21 @@ ClaimToken immediately, or to Failure if there was an unexpected failure.
 """
 struct RequestLogin <: State
     server::String
-    challenge::Union{Nothing, String}
+    challenge::String
     response::Union{String, Dict{String, Any}}
 end
 Base.show(io::IO, s::RequestLogin) = print(io, "RequestLogin($(s.server), <REDACTED>, $(s.response))")
 
 function step(state::RequestLogin)::Union{ClaimToken, Failure}
-    url = if state.challenge === nothing
-        string(state.server, "/response?", state.response)
-    else
+    is_device = response isa Dict{String, Any} && get(response, "client_id", nothing) == "device"
+    url = if is_device
         string(state.response["verification_uri_complete"])
+    else
+        string(state.server, "/response?", state.response)
     end
 
     success = open_browser(url)
-    if success && state.challenge === nothing
+    if success && state.is_device
         return ClaimToken(state.server, state.challenge, state.response, expiry=state.response["expires_in"])
     elseif success
         return ClaimToken(state.server, state.challenge, state.response)
@@ -377,7 +394,8 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
     sleep(state.poll_interval)
 
     output = IOBuffer()
-    if state.challenge === nothing
+    is_device = response isa Dict{String, Any} && get(response, "client_id", nothing) == "device")
+    if is_device
         response = Downloads.request(
             string(state.server, "/dex/token"),
             method = "POST",
@@ -416,7 +434,7 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
         end
     elseif response isa Downloads.Response && response.status == 200
         return HasNewToken(state.server, JSON.parse(String(take!(output)))["access_token"])
-    elseif response isa Downloads.Response && response.status == 401 && state.challenge === nothing
+    elseif response isa Downloads.Response && response.status == 401 && is_device
         return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures)
     else
         return HttpError(response)
