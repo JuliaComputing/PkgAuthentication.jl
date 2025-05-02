@@ -252,24 +252,13 @@ function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication}
     refresh_token = state.token["refresh_token"]
     output = IOBuffer()
     is_device = get(state.token, "client_id", nothing) == "device"
-    response = if is_device
-        Downloads.request(
-            joinpath(state.server, "dex/token"),
-            method = "POST",
-            headers = ["Content-Type" => "application/x-www-form-urlencoded"],
-            input = IOBuffer("grant_type=refresh_token&client_id=device&refresh_token=$refresh_token"),
-            output = output,
-            throw = false,
-        )
-    else
-        Downloads.request(
-            state.token["refresh_url"],
-            method = "GET",
-            headers = ["Authorization" => "Bearer $refresh_token"],
-            output = output,
-            throw = false,
-        )
-    end
+    response = Downloads.request(
+        state.token["refresh_url"],
+        method = "GET",
+        headers = ["Authorization" => "Bearer $refresh_token"],
+        output = output,
+        throw = false,
+    )
     # errors are recoverable by just getting a new token:
     if response isa Downloads.Response && response.status == 200
         try
@@ -281,7 +270,8 @@ function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication}
             end
             if is_device
                 body["client_id"] = "device"
-                body["expires"] = body["expires_in"] + Int(floor(time()))
+                # refresh_url and expires/expires_at will be present in this refreshed token
+                # so no need to manually add them here
             end
             return HasNewToken(state.server, body)
         catch err
@@ -410,7 +400,7 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
         response = Downloads.request(
             joinpath(state.server, "dex/token"),
             method = "POST",
-            input = IOBuffer(reqstr),
+            input = IOBuffer("client_id=device&scope=openid profile offline_access&grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code=$(state.response["device_code"])"),
             output = output,
             throw = false,
             headers = Dict("Accept" => "application/json", "Content-Type" => "application/x-www-form-urlencoded"),
@@ -447,6 +437,7 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
         body = JSON.parse(String(take!(output)))
         body["client_id"] = "device"
         body["expires"] = body["expires_in"] + Int(floor(time()))
+        body["refresh_url"] = joinpath(state.server, "auth/renew/token.toml/v2/") # Need to be careful with auth suffix, if set
         return HasNewToken(state.server, body)
     elseif response isa Downloads.Response && response.status in [401, 400] && is_device
         return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures)
