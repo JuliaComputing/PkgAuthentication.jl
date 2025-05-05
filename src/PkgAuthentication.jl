@@ -174,31 +174,76 @@ struct NoAuthentication <: State
 end
 Base.show(io::IO, s::NoAuthentication) = print(io, "NoAuthentication($(s.server))")
 
-function step(state::NoAuthentication)::Union{RequestLogin, Failure}
+function get_openid_configuration(state::NoAuthentication)
     output = IOBuffer()
-    # Try device flow first
     response = Downloads.request(
-        joinpath(state.server, "dex/device/code"),
+        joinpath(state.server, "dex/.well-known/openid-configuration"),
+        method = "GET",
+        output = output,
+        throw = false,
+        headers = ["Accept" => "application/json"],
+    )
+
+    if response isa Downloads.Response && response.status == 200
+        body = nothing
+        content = String(take!(output))
+        try
+            body = JSON.parse(content)
+        catch ex
+            @debug "Request for well known configuration returned: ", content
+            return false, "", ""
+        end
+
+        return body !== nothing && haskey(body, "device_authorization_endpoint") && haskey(body, "grant_types_supported") && "urn:ietf:params:oauth:grant-type:device_code" in body["grant_types_supported"], body["device_authorization_endpoint"], body["token_endpoint"]
+    end
+
+    return false, "", ""
+end
+
+function step(state::NoAuthentication)::Union{RequestLogin, Failure}
+    device_tokens_supported, device_endpoint, token_endpoint = get_openid_configuration(state)
+    success, challenge, body_or_response = if device_tokens_supported
+        fetch_device_code(state, device_endpoint)
+    else
+        initiate_browser_challenge(state)
+    end
+    if success
+        return RequestLogin(state.server, challenge, body_or_response, token_endpoint)
+    else
+        return HttpError(body_or_reponse)
+    end
+end
+
+function fetch_device_code(state::NoAuthentication, device_endpoint::AbstractString)
+    output = IOBuffer()
+    response = Downloads.request(
+        device_endpoint,
         method = "POST",
-        input = IOBuffer("client_id=device&scope=openid email profile offline_access"),
+        input = IOBuffer("client_id=$(get(ENV, "JULIA_PKG_AUTHENTICATION_DEVICE_CLIENT_ID", "device"))&scope=openid email profile offline_access"),
         output = output,
         throw = false,
         headers = Dict("Accept" => "application/json", "Content-Type" => "application/x-www-form-urlencoded"),
     )
     if response isa Downloads.Response && response.status == 200
         body = nothing
+        content = String(take!(output))
         try
-            body = JSON.parse(String(take!(output)))
+            body = JSON.parse(content)
         catch ex
-            @debug "Request for device code returned: ", body
+            @debug "Request for device code returned: ", content
+            return false, "", response
         end
 
         if body !== nothing
-            body["client_id"] = "device"
-            return RequestLogin(state.server, "", body)
+            body["client"] = "device"
+            return true, "", body
         end
     end
+    return false, "", response
+end
 
+function initiate_browser_challenge(state::NoAuthentication)
+    output = IOBuffer()
     challenge = Random.randstring(32)
     response = Downloads.request(
         string(state.server, "/challenge"),
@@ -208,9 +253,9 @@ function step(state::NoAuthentication)::Union{RequestLogin, Failure}
         throw = false,
     )
     if response isa Downloads.Response && response.status == 200
-        return RequestLogin(state.server, challenge, String(take!(output)))
+        return true, challenge, String(take!(output))
     else
-        return HttpError(response)
+        return false, challenge, response
     end
 end
 
@@ -251,7 +296,7 @@ Base.show(io::IO, s::NeedRefresh) = print(io, "NeedRefresh($(s.server), <REDACTE
 function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication}
     refresh_token = state.token["refresh_token"]
     output = IOBuffer()
-    is_device = get(state.token, "client_id", nothing) == "device"
+    is_device = get(state.token, "client", nothing) == "device"
     response = Downloads.request(
         state.token["refresh_url"],
         method = "GET",
@@ -269,7 +314,7 @@ function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication}
                 assert_dict_keys(body, "expires", "expires_at"; msg=msg)
             end
             if is_device
-                body["client_id"] = "device"
+                body["client"] = "device"
                 # refresh_url and expires/expires_at will be present in this refreshed token
                 # so no need to manually add them here
             end
@@ -339,11 +384,12 @@ struct RequestLogin <: State
     server::String
     challenge::String
     response::Union{String, Dict{String, Any}}
+    token_endpoint::String
 end
-Base.show(io::IO, s::RequestLogin) = print(io, "RequestLogin($(s.server), <REDACTED>, $(s.response))")
+Base.show(io::IO, s::RequestLogin) = print(io, "RequestLogin($(s.server), <REDACTED>, $(s.response), $(s.token_endpoint))")
 
 function step(state::RequestLogin)::Union{ClaimToken, Failure}
-    is_device = state.response isa Dict{String, Any} && get(state.response, "client_id", nothing) == "device"
+    is_device = state.response isa Dict{String, Any} && get(state.response, "client", nothing) == "device"
     url = if is_device
         string(state.response["verification_uri_complete"])
     else
@@ -353,9 +399,9 @@ function step(state::RequestLogin)::Union{ClaimToken, Failure}
     success = open_browser(url)
     if success && is_device
         # In case of device tokens, timeout for challenge is received in the initial request.
-        return ClaimToken(state.server, state.challenge, state.response, Inf, time(), state.response["expires_in"], 2, 0, 10)
+        return ClaimToken(state.server, state.challenge, state.response, Inf, time(), state.response["expires_in"], 2, 0, 10, state.token_endpoint)
     elseif success
-        return ClaimToken(state.server, state.challenge, state.response)
+        return ClaimToken(state.server, state.challenge, state.response, state.token_endpoint)
     else # this can only happen for the browser hook
         return GenericError("Failed to execute open_browser hook.")
     end
@@ -376,11 +422,12 @@ struct ClaimToken <: State
     poll_interval::Float64
     failures::Int
     max_failures::Int
+    token_endpoint::String
 end
-Base.show(io::IO, s::ClaimToken) = print(io, "ClaimToken($(s.server), <REDACTED>, $(s.response), $(s.expiry), $(s.start_time), $(s.timeout), $(s.poll_interval), $(s.failures), $(s.max_failures))")
+Base.show(io::IO, s::ClaimToken) = print(io, "ClaimToken($(s.server), <REDACTED>, $(s.response), $(s.expiry), $(s.start_time), $(s.timeout), $(s.poll_interval), $(s.failures), $(s.max_failures), $(s.token_endpoint))")
 
-ClaimToken(server, challenge, response, expiry = Inf, failures = 0) =
-    ClaimToken(server, challenge, response, expiry, time(), 180, 2, failures, 10)
+ClaimToken(server, challenge, response, token_endpoint, expiry = Inf, failures = 0) =
+    ClaimToken(server, challenge, response, expiry, time(), 180, 2, failures, 10, token_endpoint)
 
 function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
     if time() > state.expiry || (time() - state.start_time)/1e6 > state.timeout # server-side or client-side timeout
@@ -394,13 +441,13 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
     sleep(state.poll_interval)
 
     output = IOBuffer()
-    is_device = state.response isa Dict{String, Any} && get(state.response, "client_id", nothing) == "device"
+    is_device = state.response isa Dict{String, Any} && get(state.response, "client", nothing) == "device"
     if is_device
         output = IOBuffer()
         response = Downloads.request(
-            joinpath(state.server, "dex/token"),
+            state.token_endpoint,
             method = "POST",
-            input = IOBuffer("client_id=device&scope=openid profile offline_access&grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code=$(state.response["device_code"])"),
+            input = IOBuffer("client_id=$(get(ENV, "JULIA_PKG_AUTHENTICATION_DEVICE_CLIENT_ID", "device"))&scope=openid profile offline_access&grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code=$(state.response["device_code"])"),
             output = output,
             throw = false,
             headers = Dict("Accept" => "application/json", "Content-Type" => "application/x-www-form-urlencoded"),
@@ -423,24 +470,24 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
         body = try
             JSON.parse(String(take!(output)))
         catch err
-            return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures)
+            return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures, state.token_endpoint)
         end
 
         if haskey(body, "token")
             return HasNewToken(state.server, body["token"])
         elseif haskey(body, "expiry") # time at which the response/challenge pair will expire on the server
-            return ClaimToken(state.server, state.challenge, state.response, body["expiry"], state.start_time, state.timeout, state.poll_interval, state.failures, state.max_failures)
+            return ClaimToken(state.server, state.challenge, state.response, body["expiry"], state.start_time, state.timeout, state.poll_interval, state.failures, state.max_failures, state.token_endpoint)
         else
-            return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures)
+            return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures, state.token_endpoint)
         end
     elseif response isa Downloads.Response && response.status == 200
         body = JSON.parse(String(take!(output)))
-        body["client_id"] = "device"
+        body["client"] = "device"
         body["expires"] = body["expires_in"] + Int(floor(time()))
         body["refresh_url"] = joinpath(state.server, "auth/renew/token.toml/v2/") # Need to be careful with auth suffix, if set
         return HasNewToken(state.server, body)
     elseif response isa Downloads.Response && response.status in [401, 400] && is_device
-        return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures)
+        return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures, state.token_endpoint)
     else
         return HttpError(response)
     end
@@ -492,8 +539,7 @@ is_new_auth_mechanism() =
 is_token_valid(toml) =
     get(toml, "id_token", nothing) isa AbstractString &&
     get(toml, "refresh_token", nothing) isa AbstractString &&
-    (get(toml, "refresh_url", nothing) isa AbstractString ||
-     get(toml, "client_id", nothing) == "device") &&
+    get(toml, "refresh_url", nothing) isa AbstractString &&
     (get(toml, "expires_at", nothing) isa Union{Integer, AbstractFloat} ||
      get(toml, "expires", nothing) isa Union{Integer, AbstractFloat})
 
