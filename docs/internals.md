@@ -107,7 +107,7 @@ stateDiagram-v2
 
 ## Device flow authentication
 
-Device flow authentication enables an application to authenticate a user by providing a link that can be opened on another device where the user can proceed with authentication. The application will be able to check whether the user has completed authentication on the other device by calling certain APIs. Finally, the application can retrieve the users OAuth token via the same API call. Device flow authentication becomes necessary on devices that do not have a browser based interface for regular login or applications that are not browser based such as command line applications. More details [here](https://auth0.com/docs/get-started/authentication-and-authorization-flow/device-authorization-flow).
+Device flow authentication enables an application to authenticate a user by providing a link that can be opened on another device where the user can proceed with authentication. The application will be able to check whether the user has completed authentication on the other device by calling certain APIs. Finally, the application can retrieve the users OAuth token via the same API call. Device flow authentication becomes necessary on devices that do not have a browser based interface for regular login or applications that are not browser based such as command line applications. More details [here](https://datatracker.ietf.org/doc/html/rfc8628).
 
 ### Working of device flow in PkgAuthentication.jl
 
