@@ -115,14 +115,13 @@ function authenticate(;
 
     server = pkg_server()
     server = rstrip(server, '/')
-    server = string(server, "/", auth_suffix)
 
     local state
 
     for i in 1:tries
         initial = force ? NoAuthentication : NeedAuthentication
 
-        state = initial(server)
+        state = initial(server, auth_suffix)
         try
             while !(isa(state, Success) || isa(state, Failure))
                 @debug "Calling step(::$(typeof(state)))"
@@ -148,8 +147,9 @@ or NoAuthentication if not.
 """
 struct NeedAuthentication <: State
     server::String
+    auth_suffix::String
 end
-Base.show(io::IO, s::NeedAuthentication) = print(io, "NeedAuthentication($(s.server))")
+Base.show(io::IO, s::NeedAuthentication) = print(io, "NeedAuthentication($(s.server), $(s.auth_suffix))")
 
 function step(state::NeedAuthentication)::Union{HasToken, NoAuthentication}
     path = token_path(state.server)
@@ -171,8 +171,9 @@ to RequestLogin, or to Failure otherwise.
 """
 struct NoAuthentication <: State
     server::String
+    auth_suffix::String
 end
-Base.show(io::IO, s::NoAuthentication) = print(io, "NoAuthentication($(s.server))")
+Base.show(io::IO, s::NoAuthentication) = print(io, "NoAuthentication($(s.server), $(s.auth_suffix))")
 
 function get_openid_configuration(state::NoAuthentication)
     output = IOBuffer()
@@ -246,7 +247,7 @@ function initiate_browser_challenge(state::NoAuthentication)
     output = IOBuffer()
     challenge = Random.randstring(32)
     response = Downloads.request(
-        string(state.server, "/challenge"),
+        joinpath(state.server, state.auth_suffix, "challenge"),
         method = "POST",
         input = IOBuffer(challenge),
         output = output,
@@ -414,6 +415,7 @@ token, or to Failure if the polling times out, or there is an unexpected error.
 """
 struct ClaimToken <: State
     server::String
+    auth_suffix::String
     challenge::Union{Nothing, String}
     response::Union{String, Dict{String, Any}}
     expiry::Float64
@@ -424,10 +426,10 @@ struct ClaimToken <: State
     max_failures::Int
     token_endpoint::String
 end
-Base.show(io::IO, s::ClaimToken) = print(io, "ClaimToken($(s.server), <REDACTED>, $(s.response), $(s.expiry), $(s.start_time), $(s.timeout), $(s.poll_interval), $(s.failures), $(s.max_failures), $(s.token_endpoint))")
+Base.show(io::IO, s::ClaimToken) = print(io, "ClaimToken($(s.server), $(s.auth_suffix), <REDACTED>, $(s.response), $(s.expiry), $(s.start_time), $(s.timeout), $(s.poll_interval), $(s.failures), $(s.max_failures), $(s.token_endpoint))")
 
-ClaimToken(server, challenge, response, token_endpoint, expiry = Inf, failures = 0) =
-    ClaimToken(server, challenge, response, expiry, time(), 180, 2, failures, 10, token_endpoint)
+ClaimToken(server, auth_suffix, challenge, response, token_endpoint, expiry = Inf, failures = 0) =
+    ClaimToken(server, auth_suffix, challenge, response, expiry, time(), 180, 2, failures, 10, token_endpoint)
 
 function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
     if time() > state.expiry || (time() - state.start_time)/1e6 > state.timeout # server-side or client-side timeout
@@ -458,7 +460,7 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
             "response" => state.response,
         ))
         response = Downloads.request(
-            string(state.server, "/claimtoken"),
+            joinpath(state.server, state.auth_suffix, "claimtoken"),
             method = "POST",
             input = IOBuffer(data),
             output = output,
@@ -470,15 +472,15 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
         body = try
             JSON.parse(String(take!(output)))
         catch err
-            return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures, state.token_endpoint)
+            return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures, state.token_endpoint)
         end
 
         if haskey(body, "token")
             return HasNewToken(state.server, body["token"])
         elseif haskey(body, "expiry") # time at which the response/challenge pair will expire on the server
-            return ClaimToken(state.server, state.challenge, state.response, body["expiry"], state.start_time, state.timeout, state.poll_interval, state.failures, state.max_failures, state.token_endpoint)
+            return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, body["expiry"], state.start_time, state.timeout, state.poll_interval, state.failures, state.max_failures, state.token_endpoint)
         else
-            return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures, state.token_endpoint)
+            return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures, state.token_endpoint)
         end
     elseif response isa Downloads.Response && response.status == 200
         body = JSON.parse(String(take!(output)))
@@ -487,7 +489,7 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
         body["refresh_url"] = joinpath(state.server, "auth/renew/token.toml/device/") # Need to be careful with auth suffix, if set
         return HasNewToken(state.server, body)
     elseif response isa Downloads.Response && response.status in [401, 400] && is_device
-        return ClaimToken(state.server, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures, state.token_endpoint)
+        return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures, state.token_endpoint)
     else
         return HttpError(response)
     end
