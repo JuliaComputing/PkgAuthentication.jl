@@ -175,10 +175,18 @@ struct NoAuthentication <: State
 end
 Base.show(io::IO, s::NoAuthentication) = print(io, "NoAuthentication($(s.server), $(s.auth_suffix))")
 
+function get_device_auth_client_id()
+    return get(ENV, "JULIA_PKG_AUTHENTICATION_DEVICE_CLIENT_ID", "")
+end
+
+function should_use_device_auth()
+    return !isempty(get_device_auth_client_id())
+end
+
 function get_openid_configuration(state::NoAuthentication)
     output = IOBuffer()
     response = Downloads.request(
-        joinpath(state.server, "dex/.well-known/openid-configuration"),
+        joinpath(state.server, ".well-known/openid-configuration"),
         method = "GET",
         output = output,
         throw = false,
@@ -195,15 +203,22 @@ function get_openid_configuration(state::NoAuthentication)
             return false, "", ""
         end
 
-        return body !== nothing && haskey(body, "device_authorization_endpoint") && haskey(body, "grant_types_supported") && "urn:ietf:params:oauth:grant-type:device_code" in body["grant_types_supported"], body["device_authorization_endpoint"], body["token_endpoint"]
+        if body !== nothing
+            return true, body["device_authorization_endpoint"], body["token_endpoint"]
+        end
     end
 
     return false, "", ""
 end
 
 function step(state::NoAuthentication)::Union{RequestLogin, Failure}
-    device_tokens_supported, device_endpoint, token_endpoint = get_openid_configuration(state)
-    success, challenge, body_or_response = if device_tokens_supported
+    token_endpoint = ""
+    device_endpoint = ""
+    if should_use_device_auth()
+        s, device_endpoint, token_endpoint = get_openid_configuration(state)
+        s || GenericError("Unable to get device and token endpoints")
+    end
+    success, challenge, body_or_response = if should_use_device_auth()
         fetch_device_code(state, device_endpoint)
     else
         initiate_browser_challenge(state)
