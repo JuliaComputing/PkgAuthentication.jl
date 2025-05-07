@@ -226,7 +226,7 @@ function step(state::NoAuthentication)::Union{RequestLogin, Failure}
     if success
         return RequestLogin(state.server, state.auth_suffix, challenge, body_or_response, token_endpoint)
     else
-        return HttpError(body_or_reponse)
+        return HttpError(body_or_response)
     end
 end
 
