@@ -156,12 +156,12 @@ function step(state::NeedAuthentication)::Union{HasToken, NoAuthentication}
     if isfile(path)
         toml = TOML.parsefile(path)
         if is_token_valid(toml)
-            return HasToken(state.server, mtime(path), toml)
+            return HasToken(state.server, state.auth_suffix, mtime(path), toml)
         else
-            return NoAuthentication(state.server)
+            return NoAuthentication(state.server, state.auth_suffix)
         end
     else
-        return NoAuthentication(state.server)
+        return NoAuthentication(state.server, state.auth_suffix)
     end
 end
 
@@ -209,7 +209,7 @@ function step(state::NoAuthentication)::Union{RequestLogin, Failure}
         initiate_browser_challenge(state)
     end
     if success
-        return RequestLogin(state.server, challenge, body_or_response, token_endpoint)
+        return RequestLogin(state.server, state.auth_suffix, challenge, body_or_response, token_endpoint)
     else
         return HttpError(body_or_reponse)
     end
@@ -268,16 +268,17 @@ file), proceeds to Success. Otherwise, proceeds to NeedRefresh.
 """
 struct HasToken <: State
     server::String
+    auth_suffix::String
     mtime::Float64
     token::Dict{String, Any}
 end
-Base.show(io::IO, s::HasToken) = print(io, "HasToken($(s.server), $(s.mtime), <REDACTED>)")
+Base.show(io::IO, s::HasToken) = print(io, "HasToken($(s.server), $(s.auth_suffix), $(s.mtime), <REDACTED>)")
 
 function step(state::HasToken)::Union{NeedRefresh, Success}
     expiry = get(state.token, "expires_at", get(state.token, "expires", 0))
     expires_in = get(state.token, "expires_in", Inf)
     if min(expiry, expires_in + state.mtime) < time()
-        return NeedRefresh(state.server, state.token)
+        return NeedRefresh(state.server, state.auth_suffix, state.token)
     else
         return Success(state.token)
     end
@@ -290,9 +291,10 @@ fails.
 """
 struct NeedRefresh <: State
     server::String
+    auth_suffix::String
     token::Dict{String, Any}
 end
-Base.show(io::IO, s::NeedRefresh) = print(io, "NeedRefresh($(s.server), <REDACTED>)")
+Base.show(io::IO, s::NeedRefresh) = print(io, "NeedRefresh($(s.server), $(s.auth_suffix), <REDACTED>)")
 
 function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication}
     refresh_token = state.token["refresh_token"]
@@ -323,10 +325,10 @@ function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication}
         catch err
             @debug "invalid body received while refreshing token" exception=(err, catch_backtrace())
         end
-        return NoAuthentication(state.server)
+        return NoAuthentication(state.server, state.auth_suffix)
     else
         @debug "request for refreshing token failed" response
-        return NoAuthentication(state.server)
+        return NoAuthentication(state.server, state.auth_suffix)
     end
 end
 
@@ -383,26 +385,27 @@ ClaimToken immediately, or to Failure if there was an unexpected failure.
 """
 struct RequestLogin <: State
     server::String
+    auth_suffix::String
     challenge::String
     response::Union{String, Dict{String, Any}}
     token_endpoint::String
 end
-Base.show(io::IO, s::RequestLogin) = print(io, "RequestLogin($(s.server), <REDACTED>, $(s.response), $(s.token_endpoint))")
+Base.show(io::IO, s::RequestLogin) = print(io, "RequestLogin($(s.server), $(s.auth_suffix), <REDACTED>, $(s.response), $(s.token_endpoint))")
 
 function step(state::RequestLogin)::Union{ClaimToken, Failure}
     is_device = state.response isa Dict{String, Any} && get(state.response, "client", nothing) == "device"
     url = if is_device
         string(state.response["verification_uri_complete"])
     else
-        string(state.server, "/response?", state.response)
+        joinpath(state.server, state.auth_suffix, string("response?", state.response))
     end
 
     success = open_browser(url)
     if success && is_device
         # In case of device tokens, timeout for challenge is received in the initial request.
-        return ClaimToken(state.server, state.challenge, state.response, Inf, time(), state.response["expires_in"], 2, 0, 10, state.token_endpoint)
+        return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, Inf, time(), state.response["expires_in"], 2, 0, 10, state.token_endpoint)
     elseif success
-        return ClaimToken(state.server, state.challenge, state.response, state.token_endpoint)
+        return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, state.token_endpoint)
     else # this can only happen for the browser hook
         return GenericError("Failed to execute open_browser hook.")
     end
