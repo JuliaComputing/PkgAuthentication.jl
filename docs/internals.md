@@ -171,7 +171,6 @@ After the user is successfully authenticated, the response will be:
 ```
 
 We generate content for the `auth.toml` file with these values. We add some extra key/values to auth.toml when device authentication is enabled:
-- `client: "device"` This will help us distinguish between device authenticated auth.toml's and legacy auth.toml's. Not to be confused with `client_id` parameter that is used in the http requests. (See below)
 - `expires_at: <expires_in> + <time()>` This value is required to determine whether the token is expired and needs refresh. This is missing in the token response so we add it by summing the `expires_in` in value with the current timestamp. 
 - `refresh_url` This value is also missing in the device token response but is necessary for refreshing expired tokens. We create this field with value `<server>/auth/renew/token.toml/device/`.
 
