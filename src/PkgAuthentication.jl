@@ -504,6 +504,7 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
         body = JSON.parse(String(take!(output)))
         body["client"] = "device"
         body["expires"] = body["expires_in"] + Int(floor(time()))
+        body["expires_at"] = body["expires"]
         body["refresh_url"] = joinpath(state.server, "auth/renew/token.toml/device/") # Need to be careful with auth suffix, if set
         return HasNewToken(state.server, body)
     elseif response isa Downloads.Response && response.status in [401, 400] && is_device
