@@ -66,4 +66,7 @@ julia> Pkg.Registry.update()
 
 ## Implementation
 
-For implementation details, please see [`docs/internals.md`](docs/internals.md).
+For implementation details, please see the internals docs:
+
+- [`docs/auth-flows.md`](docs/auth-flows.md).
+- [`docs/state-machine.md`](docs/state-machine.md).
