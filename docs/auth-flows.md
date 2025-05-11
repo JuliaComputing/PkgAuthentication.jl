@@ -21,7 +21,7 @@ Pkg uses the following top-level key values pairs:
 - `access_token` (REQUIRED): the bearer token used to authorize normal requests (string)
 - `expires_at` (OPTIONAL): an absolute expiration time (seconds from UNIX epoch; integer)
 - `expires_in` (OPTIONAL): a relative expiration time (seconds; integer)
-- `refresh_url` (OPTIONAL): URL to fetch new a new token from (string)
+- `refresh_url` (OPTIONAL): URL to fetch a new token from (string)
 - `refresh_token` (OPTIONAL): bearer token used to authorize refresh requests (string)
 
 The `auth.toml` file may contain other fields (e.g. a username, or user email), but they are ignored by Pkg.
@@ -50,7 +50,7 @@ When the Pkg client downloads a new `auth.toml` file, if there is a relative `ex
 This combination of policies allows expiration to work gracefully even in the presence of clock skew between the server and the client.
 
 If the access token is expired and there are `refresh_token` and `refresh_url` fields in `auth.toml`, a new auth file is requested by making a request to `refresh_url` with an `Authorization: Bearer $refresh_token` header.
-Pkg will refuse to make unless `refresh_url` is an HTTPS URL.
+Pkg will refuse to make the refresh request unless `refresh_url` is an HTTPS URL.
 
 Note that `refresh_url` need not be a URL on the Pkg server: token refresh can be handled by separate server.
 If the request is successful and the returned `auth.toml` file is a well-formed TOML file with _at least_ an `access_token` field, it is saved to server directory, replacing the existing `auth.toml` file.
@@ -91,11 +91,11 @@ The flow goes through the following steps:
 
    The body of the request should be the challenge string (just plain bytes, not encoded as JSON or anything).
 
-   The server MUST responds with the status code `200` and a body containing the response URL fragment `response` (again, plain bytes, no encoding of any form).
+   The server MUST respond with the status code `200` and a body containing the response URL fragment `response` (again, plain bytes, no encoding of any form).
 
 3. Opening the response URL fragment in the user's browser.
 
-   At this point, the user should open the following URL browser (that is logged into the package server) and approve the authentication request:
+   At this point, the user should open the following URL in a web browser (that is logged into the package server) and approve the authentication request:
 
    ```
    $(pkg_server)/$(auth_suffix)/response?$(response)
@@ -107,7 +107,7 @@ The flow goes through the following steps:
 
 4. Polling the package server's token claiming endpoint.
 
-   While waiting for the user the approve the authentication request in step (3), PkgAuthentication will poll the package server's token claiming endpoint.
+   While waiting for the user to approve the authentication request in step (3), PkgAuthentication will poll the package server's token claiming endpoint.
    The polling is done by sending a POST request
 
    ```
@@ -139,4 +139,4 @@ The flow goes through the following steps:
 5. Constructing the `auth.toml` file.
 
    If PkgAuthentication successfully acquires a token from polling the `/claimtoken` endpoint, it will write the token to the `auth.toml` file.
-   If will write out all the keys and values of the `token` in the `auth.toml` file as TOML.
+   It will write out all the keys and values of the `token` in the `auth.toml` file as TOML.
