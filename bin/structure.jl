@@ -1,4 +1,4 @@
-# This script generates the `docs/internals.md` file, that mainly contains the
+# This script generates the `docs/state-machine.md` file, that mainly contains the
 # state machine diagram that we can automatically generate from the code.
 import PkgAuthentication
 import InteractiveUtils, Markdown, TextWrap
@@ -7,7 +7,7 @@ import InteractiveUtils, Markdown, TextWrap
 # first, so that we wouldn't end up with a partial file if there is some error.
 buffer = let buffer = IOBuffer(write=true)
     write(buffer, """
-    # Internal implementation notes
+    # Internal State Machine
 
     The authentication control flow is implemented as the following state machine, starting from the `NeedAuthentication`
     state (or `NoAuthentication` if `force=true` is passed to `authenticate`), and finishing in either `Success` or `Failure`.
