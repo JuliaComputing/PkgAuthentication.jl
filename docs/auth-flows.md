@@ -118,8 +118,8 @@ The flow goes through the following steps:
 
    ```json
    {
-     "challenge" => "$(challenge)",
-     "response" => "$(response)"
+     "challenge": "$(challenge)",
+     "response": "$(response)"
    }
    ```
 
