@@ -3,7 +3,7 @@
 If authentication is required, Julia uses [bearer tokens (RFC 6750)](https://datatracker.ietf.org/doc/html/rfc6750) to authenticate package server requests.
 That is, the HTTP requests set the `Authorization: Bearer $(access_token)` header when fetching data from the package server.
 
-The PkgAuthentication manages acquiring these tokens from package server, generally via an interactive flow.
+PkgAuthentication.jl manages acquiring these tokens from package server, generally via an interactive flow.
 This document describes the protocols related to the authentication,
 and also acts as a specification for a few PkgAuthentication-specific conventions that _authenticated_ package servers should follow.
 
@@ -15,8 +15,7 @@ _Note: the discussions of the package server protocol itself (i.e. downloading o
 
 ## Authenticated package requests & `auth.toml` files
 
-Julia (i.e. Pkg.jl - the package manager) stores the token information in a `auth.toml` file in the "server directory".
-For each package server host, it is generally stored as a TOML file at `~/.julia/servers/{hostname}/auth.toml`.
+Julia (i.e. Pkg.jl - the package manager) stores the token information in a `auth.toml` file in the "server directory" at `~/.julia/servers/{hostname}/auth.toml`.
 
 Pkg uses the following top-level key values pairs:
 
