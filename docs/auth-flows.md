@@ -1,19 +1,21 @@
 # Authentication Flows
 
 If authentication is required, Julia uses [bearer tokens (RFC 6750)](https://datatracker.ietf.org/doc/html/rfc6750) to authenticate package server requests.
-That is, the HTTP requests set the `Authorization: Bearer $access_token` header when fetching data from the package server.
+That is, the HTTP requests set the `Authorization: Bearer $(access_token)` header when fetching data from the package server.
 
 The PkgAuthentication manages acquiring these tokens from package server, generally via an interactive flow.
-This document describes the details related to the authentication,
+This document describes the protocols related to the authentication,
 and also acts as a specification for a few PkgAuthentication-specific conventions that _authenticated_ package servers should follow.
 
 Additional resources & references:
 
 - [Original implementation notes `JuliaLang/Pkg.jl#1538`](https://github.com/JuliaLang/Pkg.jl/pull/1538#issuecomment-564118431)
 
+_Note: the discussions of the package server protocol itself (i.e. downloading of registires, packages, and artifacts) is out of scope of this document._
+
 ## Authenticated package requests & `auth.toml` files
 
-Julia (i.e. Pkg - the package manager) stores the token information in a `auth.toml` file in the "server directory".
+Julia (i.e. Pkg.jl - the package manager) stores the token information in a `auth.toml` file in the "server directory".
 For each package server host, it is generally stored as a TOML file at `~/.julia/servers/{hostname}/auth.toml`.
 
 Pkg uses the following top-level key values pairs:
@@ -28,7 +30,7 @@ The `auth.toml` file may contain other fields (e.g. a username, or user email), 
 
 The two other fields mentioned in RFC6750 are `token_type` and `scope`.
 These are omitted since only Bearer tokens are currently supported, and the scope is always implicitly to provide access to Pkg protocol URLs.
-Pkg servers should, however, not send `auth.toml` files with token_type or scope fields, as these names may be used in the future, e.g. to support other kinds of tokens or to limit the scope of an authorization to a subset of Pkg protocol URLs.
+Pkg servers, however, SHOULD NOT send `auth.toml` files with `token_type` or `scope` fields, as these names may be used in the future, e.g. to support other kinds of tokens or to limit the scope of an authorization to a subset of Pkg protocol URLs.
 
 As an example, a valid `auth.toml` file might look something like this:
 
@@ -49,7 +51,7 @@ The expiration time is the minimum of `expires_at` and `mtime(auth_file) + expir
 When the Pkg client downloads a new `auth.toml` file, if there is a relative `expires_in` field, an absolute `expires_at` value is computed based on the client's current clock time.
 This combination of policies allows expiration to work gracefully even in the presence of clock skew between the server and the client.
 
-If the access token is expired and there are `refresh_token` and `refresh_url` fields in `auth.toml`, a new auth file is requested by making a request to `refresh_url` with an `Authorization: Bearer $refresh_token` header.
+If the access token is expired and there are `refresh_token` and `refresh_url` fields in `auth.toml`, a new auth file is requested by making a request to `refresh_url` with an `Authorization: Bearer $(refresh_token)` header.
 Pkg will refuse to make the refresh request unless `refresh_url` is an HTTPS URL.
 
 Note that `refresh_url` need not be a URL on the Pkg server: token refresh can be handled by separate server.
@@ -64,12 +66,12 @@ If, after attempting to refresh the access token, the server still returns HTTP 
 
 ## Acquiring Authentication Tokens
 
-PkgAuthentication is designed to assist the user in acquiring authentication tokens by performing an interactive, browser-base authentication flow.
+PkgAuthentication is designed to assist the user in acquiring authentication tokens by performing an interactive, browser-based authentication flow.
 
-To start an authentication flow, the following information is necessary to know which URL to request the token from:
+The following information is necessary to start the authentication flow, to know which URL to request the token from:
 
 * `pkg_server`: the package server URL; i.e. the value that is used (and generally automatically determined from) the `JULIA_PKG_SERVER` environment variable.
-* `auth_suffix`: specifies an additional URL suffix to append to the `pkg_server` URL to form authentication URLs. This defaults to `/auth`.
+* `auth_suffix`: specifies an additional URL suffix to append to the `pkg_server` URL to form the authentication URLs. This defaults to `/auth`.
 
 ### Notational Conventions
 
@@ -101,9 +103,9 @@ The flow goes through the following steps:
    $(pkg_server)/$(auth_suffix)/response?$(response)
    ```
 
-   The package server should implement a basic interface for the user to approve or deny the authentication request.
-   It should also indicate which user is logged in and which package server is being authenticated against.
-   When the user approves the request, it should indicate to the user that the request has been approved and that they can close the browser window and return to their application.
+   The package server SHOULD implement a basic interface for the user to approve or deny the authentication request.
+   It SHOULD also indicate which user is logged in and which package server is being authenticated against.
+   When the user approves the request, it SHOULD indicate to the user that the request has been approved and that they can close the browser window and return to their application.
 
 4. Polling the package server's token claiming endpoint.
 
