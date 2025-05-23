@@ -213,7 +213,7 @@ The flow goes through the following steps:
 
 4. The client must generate the `auth.toml` file with the above values. The following extra key/values must be added by the client to the auth.toml:
     - `expires_at: <expires_in> + <time()>` This value is required to determine whether the token is expired and needs refresh. This is missing in the token response so it must be added by summing the `expires_in` value with the current timestamp.
-    - `refresh_url` This value is also missing in the device token response but is necessary for refreshing expired tokens. This field must be added with value same as the `refresh_url` from the `device_authorization_endpoint` response.
+    - `refresh_url` This value is also missing in the device token response but is necessary for refreshing expired tokens. This field must be added with value same as the `refresh_url` from the package server authentication configuration endpoint response.
 
 #### Client ID for device authentication flow
 
