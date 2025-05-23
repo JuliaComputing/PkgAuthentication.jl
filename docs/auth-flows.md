@@ -78,7 +78,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 ### Authentication mechanisms
 
-PkgAuthentication.jl supports two different authentication mechanisms:
+PkgAuthentication supports two different authentication mechanisms:
+
 1. Classic Authentication Flow
 2. Device Authentication Flow
 
