@@ -114,20 +114,15 @@ end
 
 function auth_configuration(req)
     if MODE[] == LEGACY_MODE
-        return HTTP.Response(
-            200,
-            """ {
-                "device_flow_supported": false
-            } """,
-        )
+        return HTTP.Response(200)
     else
         return HTTP.Response(
             200,
             """ {
-                "device_flow_supported": true,
-                "refresh_url": "http://localhost:$PORT/auth/renew/token.toml/device/",
+                "auth_flows": ["classic", "device"],
+                "device_token_refresh_url": "http://localhost:$PORT/auth/renew/token.toml/device/",
                 "device_authorization_endpoint": "http://localhost:$PORT/auth/device/code",
-                "token_endpoint": "http://localhost:$PORT/auth/token"
+                "device_token_endpoint": "http://localhost:$PORT/auth/token"
             } """,
         )
     end

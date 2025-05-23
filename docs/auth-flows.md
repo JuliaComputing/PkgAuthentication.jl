@@ -98,9 +98,11 @@ For a valid implementation of the configuration endpoint, the package server:
 
 If the response is invalid (non-`200` code or an invalid JSON object), PkgAuthentication will assume that the server only supports the Classic Authentication Flow, and proceed accordingly.
 
+When device authentication is not supported by the server the response body MAY contain the following JSON data:
+
 ```json
 {
-  "device_flow_supported": false
+  "auth_flows": ["classic"]
 }
 ```
 
@@ -110,10 +112,10 @@ When device authentication _is_ supported by the server, the response body MUST 
 
 ```json
 {
-  "device_flow_supported": true,
-  "refresh_url": "https://juliahub.com/auth/renew/token.toml/device/",
+  "auth_flows": ["classic", "device"],
+  "device_token_refresh_url": "https://juliahub.com/auth/renew/token.toml/device/",
   "device_authorization_endpoint": "https://auth.juliahub.com/auth/device/code",
-  "token_endpoint": "https://auth.juliahub.com/auth/token"
+  "device_token_endpoint": "https://auth.juliahub.com/auth/token"
 }
 ```
 
@@ -210,11 +212,11 @@ The flow goes through the following steps:
 
 2. The client should open `verfication_uri_complete` in the browser so that the user can login and approve the authorization request. The package server SHOULD provide an interface for the user to login and approve or deny the authorization request.
 
-3. The client should now poll for completion of the authorization request. It can do so by making a `POST` request to the `token_endpoint` with the same headers as was used for the `device_authorization_endpoint` call. The body of the request MUST contain the url encoded `client_id` and `scope`. The values of these parameters must match the values sent for `device_authorization_endpoint`. In addition to these two parameters, a `grant_type` and `device_code` parameter must also be included with values `urn:ietf:params:oauth:grant-type:device_code` and the `device_code` response value from the `device_authorization_endpoint` call, respectively.
+3. The client should now poll for completion of the authorization request. It can do so by making a `POST` request to the `device_token_endpoint` with the same headers as was used for the `device_authorization_endpoint` call. The body of the request MUST contain the url encoded `client_id` and `scope`. The values of these parameters must match the values sent for `device_authorization_endpoint`. In addition to these two parameters, a `grant_type` and `device_code` parameter must also be included with values `urn:ietf:params:oauth:grant-type:device_code` and the `device_code` response value from the `device_authorization_endpoint` call, respectively.
 
-    While the user hasn't finished responding to the authorization request or has denied the authorization request, the `token_endpoint` response status must be `401` or `400`.
+    While the user hasn't finished responding to the authorization request or has denied the authorization request, the `device_token_endpoint` response status must be `401` or `400`.
 
-    When the user approves the authorization request, the `token_endpoint` response status must be 200 with a JSON body containing the `access_token`, `id_token`, `refresh_token` and `expires_in`. Example:
+    When the user approves the authorization request, the `device_token_endpoint` response status must be 200 with a JSON body containing the `access_token`, `id_token`, `refresh_token` and `expires_in`. Example:
 
     ```json
     {
@@ -228,7 +230,7 @@ The flow goes through the following steps:
 
 4. The client must generate the `auth.toml` file with the above values. The following extra key/values must be added by the client to the auth.toml:
     - `expires_at: <expires_in> + <time()>` This value is required to determine whether the token is expired and needs refresh. This is missing in the token response so it must be added by summing the `expires_in` value with the current timestamp.
-    - `refresh_url` This value is also missing in the device token response but is necessary for refreshing expired tokens. This field must be added with value same as the `refresh_url` from the package server authentication configuration endpoint response.
+    - `refresh_url` This value is also missing in the device token response but is necessary for refreshing expired tokens. This field must be added with value same as the `device_token_refresh_url` from the package server authentication configuration endpoint response.
 
 #### Client ID for device authentication flow
 

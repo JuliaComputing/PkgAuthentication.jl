@@ -186,14 +186,14 @@ end
 # Query the /auth/configuration endpoint to get the refresh url and
 # device authentication endpoints. Returns a Dict with the following
 # fields:
-# - `device_flow_supported`::Bool: Indicates whether device flow is
-#   enabled on the server.
-# - `refresh_url`::String: The refresh URL for refreshing the auth
+# - `auth_flows`::Vector{String}: The authentication mechanisms supported
+#   by the server. Eg: ["classic", "device"]
+# - `device_token_refresh_url`::String: The refresh URL for refreshing the auth
 #   token
 # - `device_authorization_endpoint`::String: The endpoint that must
 #   be called to initiate device flow authentication. This field is
 #   only present when device flow is enabled on the server.
-# - `token_endpoint`::String: The endpoint that should be called to
+# - `device_token_endpoint`::String: The endpoint that should be called to
 #   retrieve the authentication token after the user has approved
 #   the authorization request. This field is only present when device
 #   flow is enabled on the server.
@@ -208,10 +208,6 @@ function get_auth_configuration(state::NoAuthentication)
         headers = ["Accept" => "application/json"],
     )
 
-    def_resp = Dict{String, Any}(
-        "device_flow_supported" => false,
-    )
-
     if response isa Downloads.Response && response.status == 200
         body = nothing
         content = String(take!(output))
@@ -219,28 +215,27 @@ function get_auth_configuration(state::NoAuthentication)
             body = JSON.parse(content)
         catch ex
             @debug "Request for well known configuration returned: ", content
-            return def_resp
+            return Dict{String, Any}()
         end
 
         if body !== nothing
-	    @assert haskey(body, "device_flow_supported")
-	    @assert (body["device_flow_supported"] && haskey(body, "device_authorization_endpoint") && haskey(body, "token_endpoint") && haskey(body, "refresh_url")) || !body["device_flow_supported"]
+	    @assert !haskey(body, "auth_flows") || !("device" in body["auth_flows"]) || (haskey(body, "device_authorization_endpoint") && haskey(body, "device_token_endpoint") && haskey(body, "device_token_refresh_url"))
             return body
         end
     end
 
-    return def_resp
+    return Dict{String, Any}()
 end
 
 function step(state::NoAuthentication)::Union{RequestLogin, Failure}
     auth_config = get_auth_configuration(state)
-    success, challenge, body_or_response = if auth_config["device_flow_supported"]
+    success, challenge, body_or_response = if "device" in get(auth_config, "auth_flows", [])
         fetch_device_code(state, auth_config["device_authorization_endpoint"])
     else
         initiate_browser_challenge(state)
     end
     if success
-        return RequestLogin(state.server, state.auth_suffix, challenge, body_or_response, get(auth_config, "token_endpoint", ""), get(auth_config, "refresh_url", ""))
+        return RequestLogin(state.server, state.auth_suffix, challenge, body_or_response, get(auth_config, "device_token_endpoint", ""), get(auth_config, "device_token_refresh_url", ""))
     else
         return HttpError(body_or_response)
     end
@@ -415,13 +410,13 @@ struct RequestLogin <: State
     auth_suffix::String
     challenge::String
     response::Union{String, Dict{String, Any}}
-    token_endpoint::String
-    refresh_url::String
+    device_token_endpoint::String
+    device_token_refresh_url::String
 end
-Base.show(io::IO, s::RequestLogin) = print(io, "RequestLogin($(s.server), $(s.auth_suffix), <REDACTED>, $(s.response), $(s.token_endpoint), $(s.refresh_url))")
+Base.show(io::IO, s::RequestLogin) = print(io, "RequestLogin($(s.server), $(s.auth_suffix), <REDACTED>, $(s.response), $(s.device_token_endpoint), $(s.device_token_refresh_url))")
 
 function step(state::RequestLogin)::Union{ClaimToken, Failure}
-    is_device = !isempty(state.token_endpoint)
+    is_device = !isempty(state.device_token_endpoint)
     url = if is_device
         string(state.response["verification_uri_complete"])
     else
@@ -431,9 +426,9 @@ function step(state::RequestLogin)::Union{ClaimToken, Failure}
     success = open_browser(url)
     if success && is_device
         # In case of device tokens, timeout for challenge is received in the initial request.
-        return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, Inf, time(), state.response["expires_in"], 2, 0, 10, state.token_endpoint, state.refresh_url)
+        return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, Inf, time(), state.response["expires_in"], 2, 0, 10, state.device_token_endpoint, state.device_token_refresh_url)
     elseif success
-        return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, state.token_endpoint, state.refresh_url)
+        return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, state.device_token_endpoint, state.device_token_refresh_url)
     else # this can only happen for the browser hook
         return GenericError("Failed to execute open_browser hook.")
     end
@@ -455,13 +450,13 @@ struct ClaimToken <: State
     poll_interval::Float64
     failures::Int
     max_failures::Int
-    token_endpoint::String
-    refresh_url::String
+    device_token_endpoint::String
+    device_token_refresh_url::String
 end
-Base.show(io::IO, s::ClaimToken) = print(io, "ClaimToken($(s.server), $(s.auth_suffix), <REDACTED>, $(s.response), $(s.expiry), $(s.start_time), $(s.timeout), $(s.poll_interval), $(s.failures), $(s.max_failures), $(s.token_endpoint), $(s.refresh_url))")
+Base.show(io::IO, s::ClaimToken) = print(io, "ClaimToken($(s.server), $(s.auth_suffix), <REDACTED>, $(s.response), $(s.expiry), $(s.start_time), $(s.timeout), $(s.poll_interval), $(s.failures), $(s.max_failures), $(s.device_token_endpoint), $(s.device_token_refresh_url))")
 
-ClaimToken(server, auth_suffix, challenge, response, token_endpoint, refresh_url, expiry = Inf, failures = 0) =
-    ClaimToken(server, auth_suffix, challenge, response, expiry, time(), 180, 2, failures, 10, token_endpoint, refresh_url)
+ClaimToken(server, auth_suffix, challenge, response, device_token_endpoint, device_token_refresh_url, expiry = Inf, failures = 0) =
+    ClaimToken(server, auth_suffix, challenge, response, expiry, time(), 180, 2, failures, 10, device_token_endpoint, device_token_refresh_url)
 
 function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
     if time() > state.expiry || (time() - state.start_time)/1e6 > state.timeout # server-side or client-side timeout
@@ -475,11 +470,11 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
     sleep(state.poll_interval)
 
     output = IOBuffer()
-    is_device = !isempty(state.token_endpoint)
+    is_device = !isempty(state.device_token_endpoint)
     if is_device
         output = IOBuffer()
         response = Downloads.request(
-            state.token_endpoint,
+            state.device_token_endpoint,
             method = "POST",
             input = IOBuffer("client_id=$(get(ENV, "JULIA_PKG_AUTHENTICATION_DEVICE_CLIENT_ID", "device"))&scope=openid profile offline_access&grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code=$(state.response["device_code"])"),
             output = output,
@@ -504,24 +499,24 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
         body = try
             JSON.parse(String(take!(output)))
         catch err
-            return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures, state.token_endpoint, state.refresh_url)
+            return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures, state.device_token_endpoint, state.device_token_refresh_url)
         end
 
         if haskey(body, "token")
             return HasNewToken(state.server, body["token"])
         elseif haskey(body, "expiry") # time at which the response/challenge pair will expire on the server
-            return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, body["expiry"], state.start_time, state.timeout, state.poll_interval, state.failures, state.max_failures, state.token_endpoint, state.refresh_url)
+            return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, body["expiry"], state.start_time, state.timeout, state.poll_interval, state.failures, state.max_failures, state.device_token_endpoint, state.device_token_refresh_url)
         else
-            return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures, state.token_endpoint, state.refresh_url)
+            return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures, state.device_token_endpoint, state.device_token_refresh_url)
         end
     elseif response isa Downloads.Response && response.status == 200
         body = JSON.parse(String(take!(output)))
         body["expires"] = body["expires_in"] + Int(floor(time()))
         body["expires_at"] = body["expires"]
-        body["refresh_url"] = state.refresh_url
+        body["refresh_url"] = state.device_token_refresh_url
         return HasNewToken(state.server, body)
     elseif response isa Downloads.Response && response.status in [401, 400] && is_device
-        return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures, state.token_endpoint, state.refresh_url)
+        return ClaimToken(state.server, state.auth_suffix, state.challenge, state.response, state.expiry, state.start_time, state.timeout, state.poll_interval, state.failures + 1, state.max_failures, state.device_token_endpoint, state.device_token_refresh_url)
     else
         return HttpError(response)
     end
