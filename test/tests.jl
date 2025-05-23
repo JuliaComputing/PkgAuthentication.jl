@@ -61,6 +61,34 @@ PkgAuthentication.register_open_browser_hook(url -> HTTP.get(url))
     @test startswith(success2.token["id_token"], "refresh-")
 end
 
+@testset "auth with running server (device flow)" begin
+    delete_token()
+    HTTP.post(joinpath(test_pkg_server, "set_mode/device"))
+
+    @info "testing inital auth"
+    success = PkgAuthentication.authenticate(test_pkg_server)
+
+    @test success isa PkgAuthentication.Success
+    @test success.token["expires_at"] > time()
+    @test startswith(success.token["id_token"], "device-")
+    @test !occursin("id_token", sprint(show, success))
+
+    sleeptimer = ceil(Int, success.token["expires_at"]  - time() + 1)
+    @info "sleep for $(sleeptimer)s (until refresh necessary)"
+    sleep(sleeptimer)
+
+    @info "testing auth refresh"
+    success2 = PkgAuthentication.authenticate(test_pkg_server)
+    @test success2 isa PkgAuthentication.Success
+    @test !occursin("id_token", sprint(show, success2))
+    @test success2.token["expires_at"] > time()
+    @test success2.token["refresh_token"] !== success.token["refresh_token"]
+    @test startswith(success2.token["id_token"], "refresh-")
+
+    HTTP.post(joinpath(test_pkg_server, "set_mode/legacy"))
+end
+
+
 @testset "PkgAuthentication.install" begin
     delete_token()
 
