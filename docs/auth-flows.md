@@ -105,7 +105,9 @@ If the response is invalid (non-`200` code or an invalid JSON object), PkgAuthen
 }
 ```
 
-In this case, PkgAuthentication.jl will execute the Classic Authentication Flow. When device authentication _is_ supported by the server, the response body MUST contain:
+In this case, PkgAuthentication will execute the Classic Authentication Flow.
+
+When device authentication _is_ supported by the server, the response body MUST contain:
 
 ```json
 {
