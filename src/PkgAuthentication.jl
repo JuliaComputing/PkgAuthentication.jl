@@ -662,7 +662,7 @@ function open_browser(url::AbstractString)
                 OPEN_BROWSER_HOOK[](url)
                 return true
             catch err
-                @debug "error executing browser hook" exception=(err, catch_backtrace())
+                @info "error executing browser hook" exception=(err, catch_backtrace())
                 return false
             end
         elseif Sys.iswindows() || detectwsl()
