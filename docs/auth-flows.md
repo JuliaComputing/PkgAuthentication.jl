@@ -118,7 +118,7 @@ When device authentication _is_ supported by the server, the response body MUST 
 }
 ```
 
-In this case, PkgAuthentication.jl will execute the Device Authentication Flow.
+In this case, PkgAuthentication will execute the Device Authentication Flow.
 
 Note: URLs in the examples are only representative. Actual URLs may differ.
 
