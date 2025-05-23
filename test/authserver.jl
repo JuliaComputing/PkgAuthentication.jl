@@ -1,5 +1,5 @@
 using HTTP, Random, JSON
-import TOML
+import Pkg: TOML
 
 const EXPIRY = 30
 const CHALLENGE_EXPIRY = 10
@@ -154,7 +154,7 @@ function auth_device_code(req)
 end
 
 function auth_device(req)
-    params = HTTP.queryparams(req)
+    params = HTTP.queryparams(HTTP.URIs.URI(req.target).query)
     user_code = get(params, "user_code", "")
     device_code = get(user_code_device_code_map, user_code, nothing)
     if device_code === nothing
