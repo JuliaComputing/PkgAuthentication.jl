@@ -83,7 +83,20 @@ PkgAuthentication supports two different authentication mechanisms:
 1. Classic Authentication Flow
 2. Device Authentication Flow
 
-When initiating a fresh authentication, PkgAuthentication.jl calls `/auth/configuration` endpoint to determine whether the Pkg server supports device authentication. This endpoint MUST return a 200 response. When device authentication is not supported by the server the response body MUST contain the following JSON data :
+When initiating the authentication flow for a brand new token, PkgAuthentication calls the package server authentication configuration endpoint at
+
+```
+$(pkg_server)/$(auth_suffix)/configuration
+```
+
+which can be used to advertise what authentication flows the server supports.
+
+For a valid implementation of the configuration endpoint, the package server:
+
+1. MUST always return a `200` HTTP status code.
+2. The response body MUST be a valid JSON object (i.e. `{...}`)
+
+If the response is invalid (non-`200` code or an invalid JSON object), PkgAuthentication will assume that the server only supports the _Classic Authentication Flow, and proceed accordingly.
 
 ```json
 {
