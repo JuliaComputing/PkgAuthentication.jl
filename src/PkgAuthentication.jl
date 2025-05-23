@@ -201,7 +201,7 @@ function get_auth_configuration(state::NoAuthentication)
     output = IOBuffer()
     auth_suffix = isempty(state.auth_suffix) ? "auth" : state.auth_suffix
     response = Downloads.request(
-        joinpath(state.server, auth_suffix, "configuration"),
+        "$(state.server)/$(auth_suffix)/configuration",
         method = "GET",
         output = output,
         throw = false,
@@ -210,7 +210,7 @@ function get_auth_configuration(state::NoAuthentication)
 
     def_resp = Dict{String, Any}(
         "device_flow_supported" => false,
-        "refresh_url" => joinpath(state.server, auth_suffix, "renew/token.toml/v2/")
+        "refresh_url" => "$(state.server)/$(auth_suffix)/renew/token.toml/v2/"
     )
 
     if response isa Downloads.Response && response.status == 200
@@ -279,7 +279,7 @@ function initiate_browser_challenge(state::NoAuthentication)
     output = IOBuffer()
     challenge = Random.randstring(32)
     response = Downloads.request(
-        joinpath(state.server, state.auth_suffix, "challenge"),
+        "$(state.server)/$(state.auth_suffix)/challenge",
         method = "POST",
         input = IOBuffer(challenge),
         output = output,
@@ -427,7 +427,7 @@ function step(state::RequestLogin)::Union{ClaimToken, Failure}
     url = if is_device
         string(state.response["verification_uri_complete"])
     else
-        joinpath(state.server, state.auth_suffix, string("response?", state.response))
+        "$(state.server)/$(state.auth_suffix)/response?$(state.response)"
     end
 
     success = open_browser(url)
@@ -494,7 +494,7 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
             "response" => state.response,
         ))
         response = Downloads.request(
-            joinpath(state.server, state.auth_suffix, "claimtoken"),
+            "$(state.server)/$(state.auth_suffix)/claimtoken",
             method = "POST",
             input = IOBuffer(data),
             output = output,
