@@ -117,8 +117,7 @@ function auth_configuration(req)
         return HTTP.Response(
             200,
             """ {
-                "device_flow_supported": false,
-                "refresh_url": "http://localhost:$PORT/auth/renew/token.toml/v2/"
+                "device_flow_supported": false
             } """,
         )
     else

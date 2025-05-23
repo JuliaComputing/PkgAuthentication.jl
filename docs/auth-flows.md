@@ -96,12 +96,11 @@ For a valid implementation of the configuration endpoint, the package server:
 1. MUST always return a `200` HTTP status code.
 2. The response body MUST be a valid JSON object (i.e. `{...}`)
 
-If the response is invalid (non-`200` code or an invalid JSON object), PkgAuthentication will assume that the server only supports the _Classic Authentication Flow, and proceed accordingly.
+If the response is invalid (non-`200` code or an invalid JSON object), PkgAuthentication will assume that the server only supports the Classic Authentication Flow, and proceed accordingly.
 
 ```json
 {
-  "device_flow_supported": false,
-  "refresh_url": "https://juliahub.com/auth/renew/token.toml/v2/"
+  "device_flow_supported": false
 }
 ```
 

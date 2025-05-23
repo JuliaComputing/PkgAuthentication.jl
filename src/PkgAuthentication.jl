@@ -210,7 +210,6 @@ function get_auth_configuration(state::NoAuthentication)
 
     def_resp = Dict{String, Any}(
         "device_flow_supported" => false,
-        "refresh_url" => "$(state.server)/$(auth_suffix)/renew/token.toml/v2/"
     )
 
     if response isa Downloads.Response && response.status == 200
@@ -225,8 +224,7 @@ function get_auth_configuration(state::NoAuthentication)
 
         if body !== nothing
 	    @assert haskey(body, "device_flow_supported")
-	    @assert haskey(body, "refresh_url")
-	    @assert (body["device_flow_supported"] && haskey(body, "device_authorization_endpoint") && haskey(body, "token_endpoint")) || !body["device_flow_supported"]
+	    @assert (body["device_flow_supported"] && haskey(body, "device_authorization_endpoint") && haskey(body, "token_endpoint") && haskey(body, "refresh_url")) || !body["device_flow_supported"]
             return body
         end
     end
@@ -242,7 +240,7 @@ function step(state::NoAuthentication)::Union{RequestLogin, Failure}
         initiate_browser_challenge(state)
     end
     if success
-        return RequestLogin(state.server, state.auth_suffix, challenge, body_or_response, get(auth_config, "token_endpoint", ""), auth_config["refresh_url"])
+        return RequestLogin(state.server, state.auth_suffix, challenge, body_or_response, get(auth_config, "token_endpoint", ""), get(auth_config, "refresh_url", ""))
     else
         return HttpError(body_or_response)
     end
@@ -520,7 +518,6 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
         body = JSON.parse(String(take!(output)))
         body["expires"] = body["expires_in"] + Int(floor(time()))
         body["expires_at"] = body["expires"]
-	@info("Setting refresh url to ", state.refresh_url)
         body["refresh_url"] = state.refresh_url
         return HasNewToken(state.server, body)
     elseif response isa Downloads.Response && response.status in [401, 400] && is_device
