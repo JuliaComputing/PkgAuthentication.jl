@@ -529,7 +529,6 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
                 client_id = device_client_id(),
                 device_code = state.response["device_code"],
                 grant_type = "urn:ietf:params:oauth:grant-type:device_code",
-                #scope = "openid profile offline_access",
             ),
             output = output,
             throw = false,
