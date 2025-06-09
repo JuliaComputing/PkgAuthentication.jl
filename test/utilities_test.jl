@@ -11,3 +11,12 @@
 
     @test PkgAuthentication.detectwsl() isa Bool
 end
+
+@testset "device_token_request_body" begin
+    @test String(take!(PkgAuthentication.device_token_request_body(client_id="foo"))) == "client_id=foo"
+    @test String(take!(PkgAuthentication.device_token_request_body(client_id="foo", scope="bar"))) == "client_id=foo&scope=bar"
+    @test String(take!(PkgAuthentication.device_token_request_body(client_id="foo", device_code="bar"))) == "client_id=foo&device_code=bar"
+    @test String(take!(PkgAuthentication.device_token_request_body(client_id="foo", grant_type="bar"))) == "client_id=foo&grant_type=bar"
+    @test String(take!(PkgAuthentication.device_token_request_body(client_id="foo", scope="bar", device_code="baz", grant_type="qux"))) == "client_id=foo&scope=bar&device_code=baz&grant_type=qux"
+    @test String(take!(PkgAuthentication.device_token_request_body(client_id="foo", scope=nothing, device_code=nothing, grant_type=nothing))) == "client_id=foo"
+end
