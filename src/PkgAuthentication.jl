@@ -179,10 +179,6 @@ function get_device_auth_client_id()
     return get(ENV, "JULIA_PKG_AUTHENTICATION_DEVICE_CLIENT_ID", "")
 end
 
-function should_use_device_auth()
-    return !isempty(get_device_auth_client_id())
-end
-
 # Query the /auth/configuration endpoint to get the refresh url and
 # device authentication endpoints. Returns a Dict with the following
 # fields:
