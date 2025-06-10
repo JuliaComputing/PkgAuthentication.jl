@@ -248,8 +248,9 @@ end
 
 function step(state::NoAuthentication)::Union{RequestLogin, Failure}
     auth_config = get_auth_configuration(state)
+    scope = get(auth_config, "device_token_scope", nothing)
     success, challenge, body_or_response = if "device" in get(auth_config, "auth_flows", [])
-        fetch_device_code(state, auth_config["device_authorization_endpoint"])
+        fetch_device_code(state, auth_config["device_authorization_endpoint"], scope)
     else
         initiate_browser_challenge(state)
     end
@@ -267,14 +268,14 @@ function step(state::NoAuthentication)::Union{RequestLogin, Failure}
     end
 end
 
-function fetch_device_code(state::NoAuthentication, device_endpoint::AbstractString)
+function fetch_device_code(state::NoAuthentication, device_endpoint::AbstractString, device_scope::Union{AbstractString, Nothing})
     output = IOBuffer()
     response = Downloads.request(
         device_endpoint,
         method = "POST",
         input = device_token_request_body(
             client_id = device_client_id(),
-            scope = "openid profile offline_access",
+            scope = device_scope,
         ),
         output = output,
         throw = false,

@@ -106,16 +106,31 @@ When device authentication is not supported by the server the response body MAY 
 }
 ```
 
+If the `auth_flows` property is present, it MUST be an array of strings.
+If it is missing, it is assumed to have the value `["classic"]`.
+
 In this case, PkgAuthentication will execute the Classic Authentication Flow.
 
-When device authentication _is_ supported by the server, the response body MUST contain:
+When device authentication _is_ supported by the server, the response body MUST contain the `auth_flows` property, and the array MUST contain the value `device`.
+Additionally, the response body MUST contain the following properties:
+
+- `device_authorization_endpoint`: URL to be used to initiate the device authentication flow.
+- `device_token_endpoint`: URL to be used to exchange the device code for a token.
+- `device_token_refresh_url`: URL that can be used to refresh the token.
+
+Furthermore, the response body MAY contain the following properties:
+
+- `device_token_scope`: Scope to be used when requesting a token. If missing, the scope will be omitted from the device token request.
+
+An example of a possible valid response body:
 
 ```json
 {
   "auth_flows": ["classic", "device"],
   "device_token_refresh_url": "https://juliahub.com/auth/renew/token.toml/device/",
   "device_authorization_endpoint": "https://auth.juliahub.com/auth/device/code",
-  "device_token_endpoint": "https://auth.juliahub.com/auth/token"
+  "device_token_endpoint": "https://auth.juliahub.com/auth/token",
+  "device_token_scope": "openid email profile offline_access"
 }
 ```
 
