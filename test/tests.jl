@@ -19,6 +19,13 @@ function delete_token()
     rm(servers_dir; force = true, recursive = true)
 end
 
+# Helper function to do the GET against /auth/configuration
+# Note: having a / at the end of the first argument of NoAuthentication
+# will break the HTTP call.
+get_auth_configuration() = PkgAuthentication.get_auth_configuration(
+    PkgAuthentication.NoAuthentication(rstrip(test_pkg_server, '/'), "auth")
+)
+
 @testset "auth without server" begin
     delete_token()
     success = PkgAuthentication.authenticate(test_pkg_server)
@@ -30,7 +37,7 @@ authserver_file = joinpath(@__DIR__, "authserver.jl")
 cmd = `$(Base.julia_cmd())  $(authserver_file)`
 env2 = copy(ENV)
 env2["JULIA_PROJECT"] = Base.active_project()
-p = run(pipeline(setenv(cmd, env2), stdout="server_out.log", stderr="server_err.log"), wait=false)
+p = run(pipeline(setenv(cmd, env2), stdout=stdout, stderr=stdout), wait=false)
 atexit(() -> kill(p))
 sleep(10)
 
@@ -65,6 +72,12 @@ end
     delete_token()
     HTTP.post(joinpath(test_pkg_server, "set_mode/device"))
 
+    # Double check that the test server is responding with the correct
+    # configuration information.
+    config = get_auth_configuration()
+    @test haskey(config, "device_token_scope")
+    @test config["device_token_scope"] == "openid"
+
     @info "testing inital auth"
     success = PkgAuthentication.authenticate(test_pkg_server)
 
@@ -85,7 +98,37 @@ end
     @test success2.token["refresh_token"] !== success.token["refresh_token"]
     @test startswith(success2.token["id_token"], "refresh-")
 
-    HTTP.post(joinpath(test_pkg_server, "set_mode/legacy"))
+    HTTP.post(joinpath(test_pkg_server, "set_mode/classic"))
+end
+
+@testset "auth with running server (device flow; no scope)" begin
+    delete_token()
+    HTTP.post(joinpath(test_pkg_server, "set_mode/device-no-scope"))
+
+    config = get_auth_configuration()
+    @test !haskey(config, "device_token_scope")
+
+    @info "testing inital auth"
+    success = PkgAuthentication.authenticate(test_pkg_server)
+
+    @test success isa PkgAuthentication.Success
+    @test success.token["expires_at"] > time()
+    @test startswith(success.token["id_token"], "device-")
+    @test !occursin("id_token", sprint(show, success))
+
+    sleeptimer = ceil(Int, success.token["expires_at"]  - time() + 1)
+    @info "sleep for $(sleeptimer)s (until refresh necessary)"
+    sleep(sleeptimer)
+
+    @info "testing auth refresh"
+    success2 = PkgAuthentication.authenticate(test_pkg_server)
+    @test success2 isa PkgAuthentication.Success
+    @test !occursin("id_token", sprint(show, success2))
+    @test success2.token["expires_at"] > time()
+    @test success2.token["refresh_token"] !== success.token["refresh_token"]
+    @test startswith(success2.token["id_token"], "refresh-")
+
+    HTTP.post(joinpath(test_pkg_server, "set_mode/classic"))
 end
 
 

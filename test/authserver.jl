@@ -4,12 +4,11 @@ import Pkg: TOML
 const EXPIRY = 30
 const CHALLENGE_EXPIRY = 10
 const PORT = 8888
-const LEGACY_MODE = 1
-const DEVICE_FLOW_MODE = 2
+@enum AuthFlowMode CLASSIC_MODE DEVICE_FLOW_MODE DEVICE_FLOW_NO_SCOPE_MODE
 
 const ID_TOKEN = Random.randstring(100)
 const TOKEN = Ref(Dict())
-const MODE = Ref(LEGACY_MODE)
+const MODE = Ref(CLASSIC_MODE)
 
 challenge_response_map = Dict()
 challenge_timeout = Dict()
@@ -102,29 +101,41 @@ function check_validity(req)
     return HTTP.Response(200, payload == TOKEN[])
 end
 
-function set_mode_legacy(req)
-    MODE[] = LEGACY_MODE
-    return HTTP.Response(200)
-end
-
-function set_mode_device(req)
-    MODE[] = DEVICE_FLOW_MODE
+function set_mode(req)
+    global MODE
+    # We want to grab the last path element of the '/set_mode/{mode}' URI
+    mode = last(split(HTTP.URIs.URI(req.target).path, '/'))
+    if mode == "classic"
+        MODE[] = CLASSIC_MODE
+    elseif mode == "device"
+        MODE[] = DEVICE_FLOW_MODE
+    elseif mode == "device-no-scope"
+        MODE[] = DEVICE_FLOW_NO_SCOPE_MODE
+    else
+        return HTTP.Response(400, "Invalid Mode $(mode)")
+    end
     return HTTP.Response(200)
 end
 
 function auth_configuration(req)
-    if MODE[] == LEGACY_MODE
-        return HTTP.Response(200)
+    global MODE
+    if MODE[] == CLASSIC_MODE
+        # classic mode could also return `auth_flows = ["classic"]`, but we choose to test
+        # the legacy case where the configuration is not implemented at all (which also
+        # implies the classic mode).
+        return HTTP.Response(501, "Not Implemented")
     else
-        return HTTP.Response(
-            200,
-            """ {
-                "auth_flows": ["classic", "device"],
-                "device_token_refresh_url": "http://localhost:$PORT/auth/renew/token.toml/device/",
-                "device_authorization_endpoint": "http://localhost:$PORT/auth/device/code",
-                "device_token_endpoint": "http://localhost:$PORT/auth/token"
-            } """,
+        body = Dict(
+            "auth_flows" => ["classic", "device"],
+            "device_token_refresh_url" => "http://localhost:$PORT/auth/renew/token.toml/device/",
+            "device_authorization_endpoint" => "http://localhost:$PORT/auth/device/code",
+            "device_token_endpoint" => "http://localhost:$PORT/auth/token",
         )
+        # device_token_scope omitted in DEVICE_FLOW_NO_SCOPE_MODE
+        if MODE[] == DEVICE_FLOW_MODE
+            body["device_token_scope"] = "openid"
+        end
+        return HTTP.Response(200, JSON.json(body))
     end
 end
 
@@ -189,8 +200,16 @@ HTTP.register!(router, "POST", "/auth/device/code", auth_device_code)
 HTTP.register!(router, "GET", "/auth/device", auth_device)
 HTTP.register!(router, "POST", "/auth/token", auth_token)
 HTTP.register!(router, "GET", "/auth/renew/token.toml/device", renew_handler)
-HTTP.register!(router, "POST", "/set_mode/legacy", set_mode_legacy)
-HTTP.register!(router, "POST", "/set_mode/device", set_mode_device)
+# We run tests on Julia 1.3-1.5, so we need to also support HTTP 0.9 server.
+# Unfortunately, HTTP 0.9 does not support variables in route paths, so
+# we can't do
+#
+#  HTTP.register!(router, "POST", "/set_mode/{mode}", set_mode)
+#
+# So we hack around this.
+for mode in ["classic", "device", "device-no-scope"]
+    HTTP.register!(router, "POST", "/set_mode/$(mode)", set_mode)
+end
 
 function run()
     println("starting server")
