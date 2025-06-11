@@ -127,9 +127,9 @@ An example of a possible valid response body:
 ```json
 {
   "auth_flows": ["classic", "device"],
-  "device_token_refresh_url": "https://juliahub.com/auth/renew/token.toml/device/",
   "device_authorization_endpoint": "https://auth.juliahub.com/auth/device/code",
   "device_token_endpoint": "https://auth.juliahub.com/auth/token",
+  "device_token_refresh_url": "https://juliahub.com/auth/renew/token.toml/device/",
   "device_token_scope": "openid email profile offline_access"
 }
 ```
