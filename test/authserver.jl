@@ -103,7 +103,8 @@ end
 
 function set_mode(req)
     global MODE
-    mode = get(HTTP.getparams(req), "mode", nothing)
+    # We want to grab the last path element of the '/set_mode/{mode}' URI
+    mode = last(split(HTTP.URIs.URI(req.target).path, '/'))
     if mode == "classic"
         MODE[] = CLASSIC_MODE
     elseif mode == "device"
@@ -199,7 +200,16 @@ HTTP.register!(router, "POST", "/auth/device/code", auth_device_code)
 HTTP.register!(router, "GET", "/auth/device", auth_device)
 HTTP.register!(router, "POST", "/auth/token", auth_token)
 HTTP.register!(router, "GET", "/auth/renew/token.toml/device", renew_handler)
-HTTP.register!(router, "POST", "/set_mode/{mode}", set_mode)
+# We run tests on Julia 1.3-1.5, so we need to also support HTTP 0.9 server.
+# Unfortunately, HTTP 0.9 does not support variables in route paths, so
+# we can't do
+#
+#  HTTP.register!(router, "POST", "/set_mode/{mode}", set_mode)
+#
+# So we hack around this.
+for mode in ["classic", "device", "device-no-scope"]
+    HTTP.register!(router, "POST", "/set_mode/$(mode)", set_mode)
+end
 
 function run()
     println("starting server")
