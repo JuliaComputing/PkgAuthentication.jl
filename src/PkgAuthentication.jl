@@ -800,7 +800,7 @@ end
 
 function open_browser(url::AbstractString)
     @debug "opening auth in browser"
-    printstyled(;
+    printstyled(
         "Authentication required: please authenticate in browser.\n";
         color=:yellow,
         bold=true,
