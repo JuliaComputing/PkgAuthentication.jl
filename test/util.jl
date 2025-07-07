@@ -1,4 +1,4 @@
-function with_depot(f::F, depot_path::AbstractString) where {F<:Function}
+function with_depot(f::F, depot_path::AbstractString) where {F <: Function}
     original_depot_path = copy(Base.DEPOT_PATH)
     empty!(Base.DEPOT_PATH)
     pushfirst!(Base.DEPOT_PATH, depot_path)
@@ -14,7 +14,7 @@ function with_depot(f::F, depot_path::AbstractString) where {F<:Function}
     end
 end
 
-function with_temp_depot(f::F) where {F<:Function}
+function with_temp_depot(f::F) where {F <: Function}
     mktempdir() do temp_depot
         with_depot(f, temp_depot)
     end
@@ -26,7 +26,7 @@ end
         @boundscheck if i === nothing
             throw(ArgumentError("Collection is empty, must contain exactly 1 element"))
         end
-        (ret, state) = i::NTuple{2,Any}
+        (ret, state) = i::NTuple{2, Any}
         @boundscheck if iterate(x, state) !== nothing
             throw(ArgumentError("Collection has multiple elements, must contain exactly 1 element"))
         end

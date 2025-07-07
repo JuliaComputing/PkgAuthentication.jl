@@ -47,7 +47,7 @@ function response_handler(req)
         "refresh_token" => refresh_token,
         "refresh_url" => "http://localhost:$(PORT)/auth/renew/token.toml/v2/",
         "expires_in" => EXPIRY,
-        "expires_at" => round(Int, time()) + EXPIRY
+        "expires_at" => round(Int, time()) + EXPIRY,
     )
 
     @show response

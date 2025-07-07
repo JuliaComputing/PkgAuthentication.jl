@@ -18,7 +18,7 @@ step(state::State) =
     throw(ArgumentError("no step function defined for this state: `$(state)`"))
 
 struct Success <: State
-    token::Dict{String,Any}
+    token::Dict{String, Any}
 end
 Base.show(io::IO, ::Success) = print(io, "Success(<REDACTED>)")
 
@@ -54,11 +54,11 @@ julia> PkgAuthentication.authenticate("my-pkg-server.example.com")
 """
 function authenticate(
     server::AbstractString;
-    auth_suffix::Union{String,Nothing}=nothing,
-    force::Union{Bool,Nothing}=nothing,
-    tries::Union{Integer,Nothing}=nothing,
+    auth_suffix::Union{String, Nothing}=nothing,
+    force::Union{Bool, Nothing}=nothing,
+    tries::Union{Integer, Nothing}=nothing,
     modify_environment::Bool=true,
-)::Union{Success,Failure}
+)::Union{Success, Failure}
     if modify_environment
         ENV[pkg_server_env_var_name] = server
     end
@@ -89,10 +89,10 @@ julia> PkgAuthentication.authenticate()
 ```
 """
 function authenticate(;
-    auth_suffix::Union{String,Nothing}=nothing,
-    force::Union{Bool,Nothing}=nothing,
-    tries::Union{Integer,Nothing}=nothing,
-)::Union{Success,Failure}
+    auth_suffix::Union{String, Nothing}=nothing,
+    force::Union{Bool, Nothing}=nothing,
+    tries::Union{Integer, Nothing}=nothing,
+)::Union{Success, Failure}
     if auth_suffix === nothing
         # If the user does not provide the `auth_suffix` kwarg, we will append
         # "/auth" at the end of the Pkg server URL.
@@ -149,9 +149,10 @@ struct NeedAuthentication <: State
     server::String
     auth_suffix::String
 end
-Base.show(io::IO, s::NeedAuthentication) = print(io, "NeedAuthentication($(s.server), $(s.auth_suffix))")
+Base.show(io::IO, s::NeedAuthentication) =
+    print(io, "NeedAuthentication($(s.server), $(s.auth_suffix))")
 
-function step(state::NeedAuthentication)::Union{HasToken,NoAuthentication}
+function step(state::NeedAuthentication)::Union{HasToken, NoAuthentication}
     path = token_path(state.server)
     if isfile(path)
         toml = TOML.parsefile(path)
@@ -173,7 +174,8 @@ struct NoAuthentication <: State
     server::String
     auth_suffix::String
 end
-Base.show(io::IO, s::NoAuthentication) = print(io, "NoAuthentication($(s.server), $(s.auth_suffix))")
+Base.show(io::IO, s::NoAuthentication) =
+    print(io, "NoAuthentication($(s.server), $(s.auth_suffix))")
 
 function device_client_id()
     return get(ENV, "JULIA_PKG_AUTHENTICATION_DEVICE_CLIENT_ID", "device")
@@ -184,9 +186,9 @@ end
 # Returns an IOBuffer() object that can be passed to Downloads.download(input=...).
 function device_token_request_body(;
     client_id::AbstractString,
-    scope::Union{AbstractString,Nothing}=nothing,
-    device_code::Union{AbstractString,Nothing}=nothing,
-    grant_type::Union{AbstractString,Nothing}=nothing,
+    scope::Union{AbstractString, Nothing}=nothing,
+    device_code::Union{AbstractString, Nothing}=nothing,
+    grant_type::Union{AbstractString, Nothing}=nothing,
 )
     b = IOBuffer()
     write(b, "client_id=", client_id)
@@ -220,7 +222,7 @@ function get_auth_configuration(state::NoAuthentication)
     output = IOBuffer()
     auth_suffix = isempty(state.auth_suffix) ? "auth" : state.auth_suffix
     response = Downloads.request(
-        "$(state.server)/$(auth_suffix)/configuration",
+        "$(state.server)/$(auth_suffix)/configuration";
         method="GET",
         output=output,
         throw=false,
@@ -234,19 +236,24 @@ function get_auth_configuration(state::NoAuthentication)
             body = JSON.parse(content)
         catch ex
             @debug "Request for well known configuration returned: ", content
-            return Dict{String,Any}()
+            return Dict{String, Any}()
         end
 
         if body !== nothing
-            @assert !haskey(body, "auth_flows") || !("device" in body["auth_flows"]) || (haskey(body, "device_authorization_endpoint") && haskey(body, "device_token_endpoint") && haskey(body, "device_token_refresh_url"))
+            @assert !haskey(body, "auth_flows") || !("device" in body["auth_flows"]) ||
+                (
+                    haskey(body, "device_authorization_endpoint") &&
+                    haskey(body, "device_token_endpoint") &&
+                    haskey(body, "device_token_refresh_url")
+                )
             return body
         end
     end
 
-    return Dict{String,Any}()
+    return Dict{String, Any}()
 end
 
-function step(state::NoAuthentication)::Union{RequestLogin,Failure}
+function step(state::NoAuthentication)::Union{RequestLogin, Failure}
     auth_config = get_auth_configuration(state)
     scope = get(auth_config, "device_token_scope", nothing)
     success, challenge, body_or_response = if "device" in get(auth_config, "auth_flows", [])
@@ -268,18 +275,24 @@ function step(state::NoAuthentication)::Union{RequestLogin,Failure}
     end
 end
 
-function fetch_device_code(state::NoAuthentication, device_endpoint::AbstractString, device_scope::Union{AbstractString,Nothing})
+function fetch_device_code(
+    state::NoAuthentication,
+    device_endpoint::AbstractString,
+    device_scope::Union{AbstractString, Nothing},
+)
     output = IOBuffer()
     response = Downloads.request(
-        device_endpoint,
+        device_endpoint;
         method="POST",
-        input=device_token_request_body(
+        input=device_token_request_body(;
             client_id=device_client_id(),
             scope=device_scope,
         ),
         output=output,
         throw=false,
-        headers=Dict("Accept" => "application/json", "Content-Type" => "application/x-www-form-urlencoded"),
+        headers=Dict(
+            "Accept" => "application/json", "Content-Type" => "application/x-www-form-urlencoded"
+        ),
     )
     if response isa Downloads.Response && response.status == 200
         body = nothing
@@ -302,11 +315,11 @@ function initiate_browser_challenge(state::NoAuthentication)
     output = IOBuffer()
     challenge = Random.randstring(32)
     response = Downloads.request(
-        "$(state.server)/$(state.auth_suffix)/challenge",
-        method="POST",
-        input=IOBuffer(challenge),
-        output=output,
-        throw=false,
+        "$(state.server)/$(state.auth_suffix)/challenge";
+        method = "POST",
+        input  = IOBuffer(challenge),
+        output = output,
+        throw  = false,
     )
     if response isa Downloads.Response && response.status == 200
         return true, challenge, String(take!(output))
@@ -325,11 +338,12 @@ struct HasToken <: State
     server::String
     auth_suffix::String
     mtime::Float64
-    token::Dict{String,Any}
+    token::Dict{String, Any}
 end
-Base.show(io::IO, s::HasToken) = print(io, "HasToken($(s.server), $(s.auth_suffix), $(s.mtime), <REDACTED>)")
+Base.show(io::IO, s::HasToken) =
+    print(io, "HasToken($(s.server), $(s.auth_suffix), $(s.mtime), <REDACTED>)")
 
-function step(state::HasToken)::Union{NeedRefresh,Success}
+function step(state::HasToken)::Union{NeedRefresh, Success}
     expiry = get(state.token, "expires_at", get(state.token, "expires", 0))
     expires_in = get(state.token, "expires_in", Inf)
     if min(expiry, expires_in + state.mtime) < time()
@@ -347,15 +361,16 @@ fails.
 struct NeedRefresh <: State
     server::String
     auth_suffix::String
-    token::Dict{String,Any}
+    token::Dict{String, Any}
 end
-Base.show(io::IO, s::NeedRefresh) = print(io, "NeedRefresh($(s.server), $(s.auth_suffix), <REDACTED>)")
+Base.show(io::IO, s::NeedRefresh) =
+    print(io, "NeedRefresh($(s.server), $(s.auth_suffix), <REDACTED>)")
 
-function step(state::NeedRefresh)::Union{HasNewToken,NoAuthentication}
+function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication}
     refresh_token = state.token["refresh_token"]
     output = IOBuffer()
     response = Downloads.request(
-        state.token["refresh_url"],
+        state.token["refresh_url"];
         method="GET",
         headers=["Authorization" => "Bearer $refresh_token"],
         output=output,
@@ -373,7 +388,9 @@ function step(state::NeedRefresh)::Union{HasNewToken,NoAuthentication}
             @info("Successfully refreshed token")
             return HasNewToken(state.server, body)
         catch err
-            @debug "invalid body received while refreshing token" exception = (err, catch_backtrace())
+            @debug "invalid body received while refreshing token" exception = (
+                err, catch_backtrace()
+            )
         end
         @info "Did not refresh token, could not json parse ", response
         return NoAuthentication(state.server, state.auth_suffix)
@@ -403,13 +420,13 @@ unexpected failure.
 """
 struct HasNewToken <: State
     server::String
-    token::Dict{String,Any}
+    token::Dict{String, Any}
     tries::Int
 end
 Base.show(io::IO, s::HasNewToken) = print(io, "HasNewToken($(s.server), <REDACTED>, $(s.tries))")
 
 HasNewToken(server, token) = HasNewToken(server, token, 0)
-function step(state::HasNewToken)::Union{HasNewToken,Success,Failure}
+function step(state::HasNewToken)::Union{HasNewToken, Success, Failure}
     if state.tries >= 3
         return GenericError("Failed to write token.")
     end
@@ -439,13 +456,16 @@ struct RequestLogin <: State
     server::String
     auth_suffix::String
     challenge::String
-    response::Union{String,Dict{String,Any}}
+    response::Union{String, Dict{String, Any}}
     device_token_endpoint::String
     device_token_refresh_url::String
 end
-Base.show(io::IO, s::RequestLogin) = print(io, "RequestLogin($(s.server), $(s.auth_suffix), <REDACTED>, $(s.response), $(s.device_token_endpoint), $(s.device_token_refresh_url))")
+Base.show(io::IO, s::RequestLogin) = print(
+    io,
+    "RequestLogin($(s.server), $(s.auth_suffix), <REDACTED>, $(s.response), $(s.device_token_endpoint), $(s.device_token_refresh_url))",
+)
 
-function step(state::RequestLogin)::Union{ClaimToken,Failure}
+function step(state::RequestLogin)::Union{ClaimToken, Failure}
     is_device = !isempty(state.device_token_endpoint)
     url = if is_device
         string(state.response["verification_uri_complete"])
@@ -464,9 +484,9 @@ function step(state::RequestLogin)::Union{ClaimToken,Failure}
             Inf,
             time(),
             state.response["expires_in"],
-            2,
+            5,
             0,
-            10,
+            20,
             state.device_token_endpoint,
             state.device_token_refresh_url,
         )
@@ -477,7 +497,7 @@ function step(state::RequestLogin)::Union{ClaimToken,Failure}
             state.challenge,
             state.response,
             state.device_token_endpoint,
-            state.device_token_refresh_url
+            state.device_token_refresh_url,
         )
     else # this can only happen for the browser hook
         return GenericError("Failed to execute open_browser hook.")
@@ -492,8 +512,8 @@ token, or to Failure if the polling times out, or there is an unexpected error.
 struct ClaimToken <: State
     server::String
     auth_suffix::String
-    challenge::Union{Nothing,String}
-    response::Union{String,Dict{String,Any}}
+    challenge::Union{Nothing, String}
+    response::Union{String, Dict{String, Any}}
     expiry::Float64
     start_time::Float64
     timeout::Float64
@@ -503,12 +523,37 @@ struct ClaimToken <: State
     device_token_endpoint::String
     device_token_refresh_url::String
 end
-Base.show(io::IO, s::ClaimToken) = print(io, "ClaimToken($(s.server), $(s.auth_suffix), <REDACTED>, $(s.response), $(s.expiry), $(s.start_time), $(s.timeout), $(s.poll_interval), $(s.failures), $(s.max_failures), $(s.device_token_endpoint), $(s.device_token_refresh_url))")
+Base.show(io::IO, s::ClaimToken) = print(
+    io,
+    "ClaimToken($(s.server), $(s.auth_suffix), <REDACTED>, $(s.response), $(s.expiry), $(s.start_time), $(s.timeout), $(s.poll_interval), $(s.failures), $(s.max_failures), $(s.device_token_endpoint), $(s.device_token_refresh_url))",
+)
 
-ClaimToken(server, auth_suffix, challenge, response, device_token_endpoint, device_token_refresh_url, expiry=Inf, failures=0) =
-    ClaimToken(server, auth_suffix, challenge, response, expiry, time(), 180, 5, failures, 20, device_token_endpoint, device_token_refresh_url)
+ClaimToken(
+    server,
+    auth_suffix,
+    challenge,
+    response,
+    device_token_endpoint,
+    device_token_refresh_url,
+    expiry=Inf,
+    failures=0,
+) =
+    ClaimToken(
+        server,
+        auth_suffix,
+        challenge,
+        response,
+        expiry,
+        time(),
+        180,
+        5,
+        failures,
+        20,
+        device_token_endpoint,
+        device_token_refresh_url,
+    )
 
-function step(state::ClaimToken)::Union{ClaimToken,HasNewToken,Failure}
+function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
     if time() > state.expiry || (time() - state.start_time) / 1e6 > state.timeout # server-side or client-side timeout
         return GenericError("Timeout waiting for user to authenticate in browser.")
     end
@@ -524,16 +569,19 @@ function step(state::ClaimToken)::Union{ClaimToken,HasNewToken,Failure}
     if is_device
         output = IOBuffer()
         response = Downloads.request(
-            state.device_token_endpoint,
+            state.device_token_endpoint;
             method="POST",
-            input=device_token_request_body(
+            input=device_token_request_body(;
                 client_id=device_client_id(),
                 device_code=state.response["device_code"],
                 grant_type="urn:ietf:params:oauth:grant-type:device_code",
             ),
             output=output,
             throw=false,
-            headers=Dict("Accept" => "application/json", "Content-Type" => "application/x-www-form-urlencoded"),
+            headers=Dict(
+                "Accept" => "application/json",
+                "Content-Type" => "application/x-www-form-urlencoded",
+            ),
         )
     else
         data = JSON.json(Dict(
@@ -541,11 +589,11 @@ function step(state::ClaimToken)::Union{ClaimToken,HasNewToken,Failure}
             "response" => state.response,
         ))
         response = Downloads.request(
-            "$(state.server)/$(state.auth_suffix)/claimtoken",
-            method="POST",
-            input=IOBuffer(data),
-            output=output,
-            throw=false,
+            "$(state.server)/$(state.auth_suffix)/claimtoken";
+            method = "POST",
+            input  = IOBuffer(data),
+            output = output,
+            throw  = false,
         )
     end
 
@@ -599,7 +647,7 @@ function step(state::ClaimToken)::Union{ClaimToken,HasNewToken,Failure}
                 state.failures + 1,
                 state.max_failures,
                 state.device_token_endpoint,
-                state.device_token_refresh_url
+                state.device_token_refresh_url,
             )
         end
     elseif response isa Downloads.Response && response.status == 200
@@ -675,8 +723,10 @@ is_token_valid(toml) =
     get(toml, "id_token", nothing) isa AbstractString &&
     get(toml, "refresh_token", nothing) isa AbstractString &&
     get(toml, "refresh_url", nothing) isa AbstractString &&
-    (get(toml, "expires_at", nothing) isa Union{Integer,AbstractFloat} ||
-     get(toml, "expires", nothing) isa Union{Integer,AbstractFloat})
+    (
+        get(toml, "expires_at", nothing) isa Union{Integer, AbstractFloat} ||
+        get(toml, "expires", nothing) isa Union{Integer, AbstractFloat}
+    )
 
 @static if Base.VERSION >= v"1.4-"
     const pkg_server = Pkg.pkg_server
@@ -697,12 +747,12 @@ else
         url::AbstractString,
         server::AbstractString,
     )
-        server === nothing && return
-        url == server || startswith(url, "$server/") || return
+        server === nothing && return nothing
+        url == server || startswith(url, "$server/") || return nothing
         m = match(r"^\w+://(?:[^\\/@]+@)?([^\\/:]+)(?:$|/|:)", server)
         if m === nothing
             @warn "malformed Pkg server value" server
-            return
+            return nothing
         end
         joinpath(Pkg.depots1(), "servers", m.captures[1])
     end
@@ -710,13 +760,14 @@ end
 
 function get_server_dir(
     url::AbstractString,
-    server::Union{AbstractString,Nothing}=pkg_server(),
+    server::Union{AbstractString, Nothing}=pkg_server(),
 )
     server_dir_pkgauth = _get_server_dir(url, server)
     server_dir_pkg = Pkg.PlatformEngines.get_server_dir(url, server)
     if server_dir_pkgauth != server_dir_pkg
-        msg = "The PkgAuthentication server directory is not equal to the Pkg server directory." *
-              "Unexpected behavior may occur."
+        msg =
+            "The PkgAuthentication server directory is not equal to the Pkg server directory." *
+            "Unexpected behavior may occur."
         @warn msg server_dir_pkgauth server_dir_pkg
     end
     return server_dir_pkgauth
@@ -734,7 +785,7 @@ function token_path(url::AbstractString)
     return get(ENV, "JULIA_PKG_TOKEN_PATH", default)
 end
 
-const OPEN_BROWSER_HOOK = Ref{Union{Base.Callable,Nothing}}(nothing)
+const OPEN_BROWSER_HOOK = Ref{Union{Base.Callable, Nothing}}(nothing)
 
 function register_open_browser_hook(f::Base.Callable)
     if !hasmethod(f, Tuple{AbstractString})
@@ -749,14 +800,17 @@ end
 
 function open_browser(url::AbstractString)
     @debug "opening auth in browser"
-    printstyled(color=:yellow, bold=true,
-        "Authentication required: please authenticate in browser.\n")
     printstyled(
+        "Authentication required: please authenticate in browser.\n";
         color=:yellow,
-        """
-The authentication page should open in your browser automatically, but you may need to switch to the opened window or tab. If the authentication page is not automatically opened, you can authenticate by manually opening the following URL: """
+        bold=true,
     )
-    printstyled(color=:light_blue, "$url\n")
+    printstyled(
+        """
+        The authentication page should open in your browser automatically, but you may need to switch to the opened window or tab. If the authentication page is not automatically opened, you can authenticate by manually opening the following URL: """;
+        color=:yellow,
+    )
+    printstyled("$url\n"; color=:light_blue)
     try
         if OPEN_BROWSER_HOOK[] !== nothing
             try
@@ -774,7 +828,8 @@ The authentication page should open in your browser automatically, but you may n
             run(`xdg-open $url`; wait=false)
         end
     catch err
-        @warn "There was a problem opening the authentication URL in a browser, please try opening this URL manually to authenticate." url, error = err
+        @warn "There was a problem opening the authentication URL in a browser, please try opening this URL manually to authenticate." url,
+        error = err
     end
     return true
 end
@@ -845,23 +900,24 @@ function install(; maxcount::Integer=3)
 end
 
 function generate_auth_handler(maxcount::Integer)
-    auth_handler = (url, server, err) -> begin
-        failed_auth_count = 0
-        ret = authenticate(server; tries=2)
-        if ret isa Success
+    auth_handler =
+        (url, server, err) -> begin
             failed_auth_count = 0
-            @debug "Authentication successful."
-        else
-            failed_auth_count += 1
-            if failed_auth_count >= maxcount
-                printstyled(color=:red, bold=true, "\nAuthentication failed.\n\n")
-                return true, false # handled, but Pkg shouldn't try again
+            ret = authenticate(server; tries=2)
+            if ret isa Success
+                failed_auth_count = 0
+                @debug "Authentication successful."
             else
-                printstyled(color=:yellow, bold=true, "\nAuthentication failed. Retrying...\n\n")
+                failed_auth_count += 1
+                if failed_auth_count >= maxcount
+                    printstyled("\nAuthentication failed.\n\n"; color=:red, bold=true)
+                    return true, false # handled, but Pkg shouldn't try again
+                else
+                    printstyled("\nAuthentication failed. Retrying...\n\n"; color=:yellow, bold=true)
+                end
             end
+            return true, true # handled, and Pkg should try again now
         end
-        return true, true # handled, and Pkg should try again now
-    end
     return auth_handler
 end
 
