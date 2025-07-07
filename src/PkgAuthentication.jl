@@ -800,14 +800,17 @@ end
 
 function open_browser(url::AbstractString)
     @debug "opening auth in browser"
-    printstyled(; color=:yellow, bold=true,
-        "Authentication required: please authenticate in browser.\n")
     printstyled(;
+        "Authentication required: please authenticate in browser.\n";
         color=:yellow,
-        """
-The authentication page should open in your browser automatically, but you may need to switch to the opened window or tab. If the authentication page is not automatically opened, you can authenticate by manually opening the following URL: """,
+        bold=true,
     )
-    printstyled(; color=:light_blue, "$url\n")
+    printstyled(
+        """
+        The authentication page should open in your browser automatically, but you may need to switch to the opened window or tab. If the authentication page is not automatically opened, you can authenticate by manually opening the following URL: """;
+        color=:yellow,
+    )
+    printstyled("$url\n"; color=:light_blue)
     try
         if OPEN_BROWSER_HOOK[] !== nothing
             try
@@ -907,10 +910,10 @@ function generate_auth_handler(maxcount::Integer)
             else
                 failed_auth_count += 1
                 if failed_auth_count >= maxcount
-                    printstyled(; color=:red, bold=true, "\nAuthentication failed.\n\n")
+                    printstyled("\nAuthentication failed.\n\n"; color=:red, bold=true)
                     return true, false # handled, but Pkg shouldn't try again
                 else
-                    printstyled(; color=:yellow, bold=true, "\nAuthentication failed. Retrying...\n\n")
+                    printstyled("\nAuthentication failed. Retrying...\n\n"; color=:yellow, bold=true)
                 end
             end
             return true, true # handled, and Pkg should try again now
