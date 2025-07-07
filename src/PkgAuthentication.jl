@@ -484,9 +484,9 @@ function step(state::RequestLogin)::Union{ClaimToken, Failure}
             Inf,
             time(),
             state.response["expires_in"],
-            2,
+            5,
             0,
-            10,
+            20,
             state.device_token_endpoint,
             state.device_token_refresh_url,
         )
@@ -546,9 +546,9 @@ ClaimToken(
         expiry,
         time(),
         180,
-        2,
+        5,
         failures,
-        10,
+        20,
         device_token_endpoint,
         device_token_refresh_url,
     )
