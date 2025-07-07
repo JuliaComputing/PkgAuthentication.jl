@@ -8,7 +8,8 @@ else
         # We use the same approach as canonical/snapd do to detect WSL
         Sys.islinux() && (
             isfile("/proc/sys/fs/binfmt_misc/WSLInterop")
-            || isdir("/run/WSL")
+            ||
+            isdir("/run/WSL")
         )
     end
 end

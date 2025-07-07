@@ -14,9 +14,9 @@ function delete_token()
     token_path = PkgAuthentication.token_path(test_pkg_server)
     servers_dir = joinpath(only(Pkg.depots()), "servers")
     @info "" token_path
-    rm(token_path; force = true, recursive = true)
+    rm(token_path; force=true, recursive=true)
     @info "" servers_dir
-    rm(servers_dir; force = true, recursive = true)
+    rm(servers_dir; force=true, recursive=true)
 end
 
 # Helper function to do the GET against /auth/configuration
@@ -37,7 +37,7 @@ authserver_file = joinpath(@__DIR__, "authserver.jl")
 cmd = `$(Base.julia_cmd())  $(authserver_file)`
 env2 = copy(ENV)
 env2["JULIA_PROJECT"] = Base.active_project()
-p = run(pipeline(setenv(cmd, env2), stdout=stdout, stderr=stdout), wait=false)
+p = run(pipeline(setenv(cmd, env2); stdout=stdout, stderr=stdout); wait=false)
 atexit(() -> kill(p))
 sleep(10)
 
@@ -55,7 +55,7 @@ PkgAuthentication.register_open_browser_hook(url -> HTTP.get(url))
     @test startswith(success.token["id_token"], "full-")
     @test !occursin("id_token", sprint(show, success))
 
-    sleeptimer = ceil(Int, success.token["expires_at"]  - time() + 1)
+    sleeptimer = ceil(Int, success.token["expires_at"] - time() + 1)
     @info "sleep for $(sleeptimer)s (until refresh necessary)"
     sleep(sleeptimer)
 
@@ -86,7 +86,7 @@ end
     @test startswith(success.token["id_token"], "device-")
     @test !occursin("id_token", sprint(show, success))
 
-    sleeptimer = ceil(Int, success.token["expires_at"]  - time() + 1)
+    sleeptimer = ceil(Int, success.token["expires_at"] - time() + 1)
     @info "sleep for $(sleeptimer)s (until refresh necessary)"
     sleep(sleeptimer)
 
@@ -116,7 +116,7 @@ end
     @test startswith(success.token["id_token"], "device-")
     @test !occursin("id_token", sprint(show, success))
 
-    sleeptimer = ceil(Int, success.token["expires_at"]  - time() + 1)
+    sleeptimer = ceil(Int, success.token["expires_at"] - time() + 1)
     @info "sleep for $(sleeptimer)s (until refresh necessary)"
     sleep(sleeptimer)
 
