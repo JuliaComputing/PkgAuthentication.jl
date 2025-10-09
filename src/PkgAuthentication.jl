@@ -858,7 +858,8 @@ julia> PkgAuthentication.install("my-pkg-server.example.com"; maxcount = 5)
 """
 function install(server::AbstractString; maxcount::Integer=3)
     ENV[pkg_server_env_var_name] = server
-    return install(; maxcount=maxcount)
+    install(; maxcount=maxcount)
+    return nothing
 end
 
 """
@@ -897,6 +898,7 @@ function install(; maxcount::Integer=3)
         # old Julia versions don't support auth hooks, so let's authenticate now and be done with it
         authenticate(server)
     end
+    return nothing
 end
 
 function generate_auth_handler(maxcount::Integer)
