@@ -932,7 +932,7 @@ end
     struct Uninstall
 
 Wrapper around the closure returned by `Pkg.PlatformEngines.register_auth_error_handler`.
-Callin
+Calling this object will remove the Pkg authentication hooks.
 
 ```julia
 julia> uninstall = PkgAuthentication.install()
