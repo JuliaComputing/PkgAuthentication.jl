@@ -146,7 +146,21 @@ end
     else
         # On Julia <1.4, the return value of `PkgAuthentication.install` will be
         # the return value from the `PkgAuthentication.authenticate` call.
-        @test result.f isa PkgAuthentication.Success
+        @test isnothing(result.f)
+    end
+
+    @testset "PkgAuthentication.Uninstall" begin
+        let u = PkgAuthentication.Uninstall(nothing)
+            @test u() === nothing
+        end
+        let count = 1
+            u = PkgAuthentication.Uninstall(() -> (count += 1; nothing))
+            @test count == 1
+            @test u() === nothing
+            @test count == 2
+            @test u() === nothing
+            @test count == 3
+        end
     end
 end
 
