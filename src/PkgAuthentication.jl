@@ -835,7 +835,7 @@ function open_browser(url::AbstractString)
 end
 
 """
-    install(server::AbstractString; maxcount = 3)
+    install(server::AbstractString; maxcount = 3) -> PkgAuthentication.Uninstall
 
 Install Pkg authentication hooks for the Pkg server specified by `server`. Also
 sets the `$(pkg_server_env_var_name)` environment variable to `server`.
@@ -858,12 +858,11 @@ julia> PkgAuthentication.install("my-pkg-server.example.com"; maxcount = 5)
 """
 function install(server::AbstractString; maxcount::Integer=3)
     ENV[pkg_server_env_var_name] = server
-    install(; maxcount=maxcount)
-    return nothing
+    return install(; maxcount=maxcount)
 end
 
 """
-    install(; maxcount = 3)
+    install(; maxcount = 3) -> PkgAuthentication.Uninstall
 
 Install Pkg authentication hooks for the Pkg server specified in the `$(pkg_server_env_var_name)`
 environment variable.
@@ -873,6 +872,8 @@ must be set to the URL of a valid Pkg server.
 
 `maxcount` determines the number of retries.
 
+You can call the returned object (no arguments) to uninstall the Pkg authentication hooks.
+
 !!! compat "Julia 1.4"
     Pkg authentication hooks require at least Julia 1.4. On earlier versions, this
     method will instead force authentication immediately.
@@ -881,8 +882,10 @@ must be set to the URL of a valid Pkg server.
 
 ```julia
 julia> PkgAuthentication.install()
+PkgAuthentication.Uninstall (call this object to remove Pkg hooks)
 
 julia> PkgAuthentication.install(; maxcount = 5)
+PkgAuthentication.Uninstall (call this object to remove Pkg hooks)
 ```
 """
 function install(; maxcount::Integer=3)
@@ -892,13 +895,15 @@ function install(; maxcount::Integer=3)
     _assert_pkg_server_env_var_is_set()
     server = String(pkg_server())
     auth_handler = generate_auth_handler(maxcount)
-    @static if PkgAuthentication.is_new_auth_mechanism()
+    uninstall_hook = @static if PkgAuthentication.is_new_auth_mechanism()
         Pkg.PlatformEngines.register_auth_error_handler(server, auth_handler)
     else
         # old Julia versions don't support auth hooks, so let's authenticate now and be done with it
         authenticate(server)
+        # the returned Uninstall will be a silent no-op
+        nothing
     end
-    return nothing
+    return Uninstall(uninstall_hook)
 end
 
 function generate_auth_handler(maxcount::Integer)
@@ -921,6 +926,27 @@ function generate_auth_handler(maxcount::Integer)
             return true, true # handled, and Pkg should try again now
         end
     return auth_handler
+end
+
+"""
+    struct Uninstall
+
+Wrapper around the closure returned by `Pkg.PlatformEngines.register_auth_error_handler`.
+Callin
+
+```julia
+julia> uninstall = PkgAuthentication.install()
+PkgAuthentication.Uninstall (call this object to remove Pkg hooks)
+
+julia> uninstall()
+```
+"""
+struct Uninstall
+    f::Union{Base.Callable, Nothing}
+end
+(c::Uninstall)() = isnothing(c.f) ? nothing : c.f()
+function Base.show(io::IO, ::MIME"text/plain", ::Uninstall)
+    print(io, "PkgAuthentication.Uninstall (call this object to remove Pkg hooks)")
 end
 
 include("precompile.jl")

@@ -136,16 +136,17 @@ end
     delete_token()
 
     result = PkgAuthentication.install(test_pkg_server)
+    @test result isa PkgAuthentication.Uninstall
     @static if PkgAuthentication.is_new_auth_mechanism()
         # On Julia 1.4+, the return value of `PkgAuthentication.install` will be
         # the return value from the `Pkg.PlatformEngines.register_auth_error_handler`
         # call. `Pkg.PlatformEngines.register_auth_error_handler` returns a zero-arg function
         # that can be called to deregister the handler.
-        @test result isa Function
+        @test result.f isa Function
     else
         # On Julia <1.4, the return value of `PkgAuthentication.install` will be
         # the return value from the `PkgAuthentication.authenticate` call.
-        @test result isa PkgAuthentication.Success
+        @test result.f isa PkgAuthentication.Success
     end
 end
 
