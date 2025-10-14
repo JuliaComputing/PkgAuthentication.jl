@@ -118,7 +118,7 @@ function authenticate(;
 
     local state
 
-    for i in 1:tries
+    for _ in 1:tries
         initial = force ? NoAuthentication : NeedAuthentication
 
         state = initial(server, auth_suffix)
@@ -131,7 +131,7 @@ function authenticate(;
             state = GenericError((err, catch_backtrace()))
         end
         if state isa Success
-            continue
+            break
         end
     end
 
@@ -766,7 +766,7 @@ function get_server_dir(
     server_dir_pkg = Pkg.PlatformEngines.get_server_dir(url, server)
     if server_dir_pkgauth != server_dir_pkg
         msg =
-            "The PkgAuthentication server directory is not equal to the Pkg server directory." *
+            "The PkgAuthentication server directory is not equal to the Pkg server directory. " *
             "Unexpected behavior may occur."
         @warn msg server_dir_pkgauth server_dir_pkg
     end
