@@ -9,9 +9,12 @@ const PORT = 8888
 const TOKEN = Ref(Dict())
 const MODE = Ref(CLASSIC_MODE)
 
-const TOKEN_COUNTER = Ref(0)
-function id_token()
-    return string(TOKEN_COUNTER[] += 1)
+const REQUEST_SET = Set()
+# this counts the number of distinct authentication requests made against the server
+function id_token(key)
+    push!(REQUEST_SET, key)
+    token = length(REQUEST_SET)
+    return string(token)
 end
 
 challenge_response_map = Dict()
@@ -46,8 +49,8 @@ function response_handler(req)
     TOKEN[] = Dict(
         "user_name" => "firstname lastname",
         "user_email" => "user@email.com",
-        "id_token" => "full-" * id_token(),
-        "access_token" => "full-" * id_token(),
+        "id_token" => "full-" * id_token(response),
+        "access_token" => "full-" * id_token(response),
         "refresh_token" => refresh_token,
         "refresh_url" => "http://localhost:$(PORT)/auth/renew/token.toml/v2/",
         "expires_in" => EXPIRY,
@@ -93,8 +96,8 @@ function renew_handler(req)
 
     TOKEN[]["refresh_token"] = Random.randstring(10)
     TOKEN[]["expires_at"] = ceil(Int, time() + EXPIRY)
-    TOKEN[]["id_token"] = "refresh-" * id_token()
-    TOKEN[]["access_token"] = "refresh-" * id_token()
+    TOKEN[]["id_token"] = "refresh-" * id_token(auth)
+    TOKEN[]["access_token"] = "refresh-" * id_token(auth)
 
     return HTTP.Response(200, sprint(TOML.print, TOKEN[]))
 end
@@ -171,11 +174,11 @@ function auth_device(req)
     end
     authenticated[device_code] = true
     refresh_token = Random.randstring(10)
-    TOKEN[]["access_token"] = "device-$(id_token())"
+    TOKEN[]["access_token"] = "device-$(id_token(user_code))"
     TOKEN[]["token_type"] = "bearer"
     TOKEN[]["expires_in"] = EXPIRY
     TOKEN[]["refresh_token"] = refresh_token
-    TOKEN[]["id_token"] = "device-$(id_token())"
+    TOKEN[]["id_token"] = "device-$(id_token(user_code))"
     return HTTP.Response(200)
 end
 
