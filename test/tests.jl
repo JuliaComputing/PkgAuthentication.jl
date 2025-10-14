@@ -178,14 +178,14 @@ end
 @testset "no retries" begin
     delete_token()
 
-    success = PkgAuthentication.authenticate(test_pkg_server)
+    success = PkgAuthentication.authenticate(test_pkg_server; force=true, tries=2)
     @test success isa PkgAuthentication.Success
     m = match(r"^\w+\-(\d+)$", success.token["id_token"])
     @test !isnothing(m)
     id1 = tryparse(Int, m.captures[1])
     @test id1 !== nothing
 
-    success2 = PkgAuthentication.authenticate(test_pkg_server)
+    success2 = PkgAuthentication.authenticate(test_pkg_server; force=true, tries=2)
     @test success2 isa PkgAuthentication.Success
     m2 = match(r"^\w+\-(\d+)$", success2.token["id_token"])
     @test !isnothing(m2)
