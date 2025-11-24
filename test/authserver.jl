@@ -68,28 +68,20 @@ function claimtoken_handler(req)
     @show payload
     @show challenge_response_map
     if haskey(challenge_response_map, payload["challenge"]) &&
-            challenge_response_map[payload["challenge"]] == payload["response"]
+        challenge_response_map[payload["challenge"]] == payload["response"]
 
         delete!(challenge_response_map, payload["challenge"])
         delete!(response_challenge_map, payload["response"])
         @show JSON.json(TOKEN[])
-        return HTTP.Response(
-            200, JSON.json(
-                Dict(
-                    "token" => TOKEN[]
-                )
-            )
-        )
+        return HTTP.Response(200, JSON.json(Dict(
+            "token" => TOKEN[]
+        )))
     else
         expires_in = round(Int, challenge_timeout[payload["challenge"]] - time())
         @show expires_in
-        return HTTP.Response(
-            200, JSON.json(
-                Dict(
-                    "expiry" => expires_in
-                )
-            )
-        )
+        return HTTP.Response(200, JSON.json(Dict(
+            "expiry" => expires_in
+        )))
     end
 
 end
@@ -229,7 +221,7 @@ end
 function run()
     println("starting server")
     HTTP.serve(router, "127.0.0.1", PORT)
-    return readline()
+    readline()
 end
 
 run()

@@ -5,7 +5,7 @@ import InteractiveUtils, Markdown, TextWrap
 
 # Rather than generating the file directly, we'll write the output to a buffer
 # first, so that we wouldn't end up with a partial file if there is some error.
-buffer = let buffer = IOBuffer(; write = true)
+buffer = let buffer = IOBuffer(; write=true)
     write(
         buffer,
         """
@@ -28,7 +28,7 @@ buffer = let buffer = IOBuffer(; write = true)
 
     all_targets = Dict{String, Vector{String}}()
     ignore_errors = (
-        PkgAuthentication.Failure, PkgAuthentication.Success,
+        PkgAuthentication.Failure, PkgAuthentication.Success
     )
     for line in readlines(pathof(PkgAuthentication))
         m = match(r"^function step\(state::(.+?)\)::Union{(.+?)}$", line)
@@ -37,7 +37,7 @@ buffer = let buffer = IOBuffer(; write = true)
         end
     end
     choice_index = 0
-    for state in sort(InteractiveUtils.subtypes(PkgAuthentication.State); by = string)
+    for state in sort(InteractiveUtils.subtypes(PkgAuthentication.State); by=string)
         println(buffer)
         state_str = string(nameof(state))
         # Generate the connecting arrows between the states
@@ -67,8 +67,8 @@ buffer = let buffer = IOBuffer(; write = true)
             docstr_text = docstr.meta[:results][1].text[1]
             println(buffer, "    note left of $(state_str)")
             TextWrap.print_wrapped(
-                buffer, docstr_text; width = 65,
-                initial_indent = 8, subsequent_indent = 8,
+                buffer, docstr_text; width=65,
+                initial_indent=8, subsequent_indent=8,
             )
             println(buffer)
             println(buffer, "    end note")

@@ -53,22 +53,22 @@ julia> PkgAuthentication.authenticate("my-pkg-server.example.com")
 ```
 """
 function authenticate(
-        server::AbstractString;
-        auth_suffix::Union{String, Nothing} = nothing,
-        force::Union{Bool, Nothing} = nothing,
-        tries::Union{Integer, Nothing} = nothing,
-        modify_environment::Bool = true,
-    )::Union{Success, Failure}
+    server::AbstractString;
+    auth_suffix::Union{String, Nothing}=nothing,
+    force::Union{Bool, Nothing}=nothing,
+    tries::Union{Integer, Nothing}=nothing,
+    modify_environment::Bool=true,
+)::Union{Success, Failure}
     if modify_environment
         ENV[pkg_server_env_var_name] = server
     end
     # Even if `modify_environment` is `false`, we still need to set the environment
     # variable for the duration of the `authenticate` call.
-    return withenv(pkg_server_env_var_name => server) do
+    withenv(pkg_server_env_var_name => server) do
         authenticate(;
-            auth_suffix = auth_suffix,
-            force = force,
-            tries = tries,
+            auth_suffix=auth_suffix,
+            force=force,
+            tries=tries,
         )
     end
 end
@@ -89,10 +89,10 @@ julia> PkgAuthentication.authenticate()
 ```
 """
 function authenticate(;
-        auth_suffix::Union{String, Nothing} = nothing,
-        force::Union{Bool, Nothing} = nothing,
-        tries::Union{Integer, Nothing} = nothing,
-    )::Union{Success, Failure}
+    auth_suffix::Union{String, Nothing}=nothing,
+    force::Union{Bool, Nothing}=nothing,
+    tries::Union{Integer, Nothing}=nothing,
+)::Union{Success, Failure}
     if auth_suffix === nothing
         # If the user does not provide the `auth_suffix` kwarg, we will append
         # "/auth" at the end of the Pkg server URL.
@@ -185,11 +185,11 @@ end
 # the Sections 3.1 and 3.4 of RFC8628 (https://datatracker.ietf.org/doc/html/rfc8628).
 # Returns an IOBuffer() object that can be passed to Downloads.download(input=...).
 function device_token_request_body(;
-        client_id::AbstractString,
-        scope::Union{AbstractString, Nothing} = nothing,
-        device_code::Union{AbstractString, Nothing} = nothing,
-        grant_type::Union{AbstractString, Nothing} = nothing,
-    )
+    client_id::AbstractString,
+    scope::Union{AbstractString, Nothing}=nothing,
+    device_code::Union{AbstractString, Nothing}=nothing,
+    grant_type::Union{AbstractString, Nothing}=nothing,
+)
     b = IOBuffer()
     write(b, "client_id=", client_id)
     if !isnothing(scope)
@@ -223,17 +223,17 @@ function get_auth_configuration(state::NoAuthentication)
     auth_suffix = isempty(state.auth_suffix) ? "auth" : state.auth_suffix
     response = Downloads.request(
         "$(state.server)/$(auth_suffix)/configuration";
-        method = "GET",
-        output = output,
-        throw = false,
-        headers = ["Accept" => "application/json"],
+        method="GET",
+        output=output,
+        throw=false,
+        headers=["Accept" => "application/json"],
     )
 
     if response isa Downloads.Response && response.status == 200
         body = nothing
         content = String(take!(output))
         try
-            body = Dict(JSON.parse(content))
+            body = JSON.parse(content)
         catch ex
             @debug "Request for well known configuration returned: ", content
             return Dict{String, Any}()
@@ -242,10 +242,10 @@ function get_auth_configuration(state::NoAuthentication)
         if body !== nothing
             @assert !haskey(body, "auth_flows") || !("device" in body["auth_flows"]) ||
                 (
-                haskey(body, "device_authorization_endpoint") &&
+                    haskey(body, "device_authorization_endpoint") &&
                     haskey(body, "device_token_endpoint") &&
                     haskey(body, "device_token_refresh_url")
-            )
+                )
             return body
         end
     end
@@ -276,21 +276,21 @@ function step(state::NoAuthentication)::Union{RequestLogin, Failure}
 end
 
 function fetch_device_code(
-        state::NoAuthentication,
-        device_endpoint::AbstractString,
-        device_scope::Union{AbstractString, Nothing},
-    )
+    state::NoAuthentication,
+    device_endpoint::AbstractString,
+    device_scope::Union{AbstractString, Nothing},
+)
     output = IOBuffer()
     response = Downloads.request(
         device_endpoint;
-        method = "POST",
-        input = device_token_request_body(;
-            client_id = device_client_id(),
-            scope = device_scope,
+        method="POST",
+        input=device_token_request_body(;
+            client_id=device_client_id(),
+            scope=device_scope,
         ),
-        output = output,
-        throw = false,
-        headers = Dict(
+        output=output,
+        throw=false,
+        headers=Dict(
             "Accept" => "application/json", "Content-Type" => "application/x-www-form-urlencoded"
         ),
     )
@@ -298,7 +298,7 @@ function fetch_device_code(
         body = nothing
         content = String(take!(output))
         try
-            body = Dict(JSON.parse(content))
+            body = JSON.parse(content)
         catch ex
             @debug "Request for device code returned: ", content
             return false, "", response
@@ -317,9 +317,9 @@ function initiate_browser_challenge(state::NoAuthentication)
     response = Downloads.request(
         "$(state.server)/$(state.auth_suffix)/challenge";
         method = "POST",
-        input = IOBuffer(challenge),
+        input  = IOBuffer(challenge),
         output = output,
-        throw = false,
+        throw  = false,
     )
     if response isa Downloads.Response && response.status == 200
         return true, challenge, String(take!(output))
@@ -371,25 +371,25 @@ function step(state::NeedRefresh)::Union{HasNewToken, NoAuthentication}
     output = IOBuffer()
     response = Downloads.request(
         state.token["refresh_url"];
-        method = "GET",
-        headers = ["Authorization" => "Bearer $refresh_token"],
-        output = output,
-        throw = false,
+        method="GET",
+        headers=["Authorization" => "Bearer $refresh_token"],
+        output=output,
+        throw=false,
     )
     # errors are recoverable by just getting a new token:
     if response isa Downloads.Response && response.status == 200
         try
             body = TOML.parse(String(take!(output)))
             let msg = "token refresh response"
-                assert_dict_keys(body, "access_token", "id_token"; msg = msg)
-                assert_dict_keys(body, "expires_in"; msg = msg)
-                assert_dict_keys(body, "expires", "expires_at"; msg = msg)
+                assert_dict_keys(body, "access_token", "id_token"; msg=msg)
+                assert_dict_keys(body, "expires_in"; msg=msg)
+                assert_dict_keys(body, "expires", "expires_at"; msg=msg)
             end
             @info("Successfully refreshed token")
             return HasNewToken(state.server, body)
         catch err
             @debug "invalid body received while refreshing token" exception = (
-                err, catch_backtrace(),
+                err, catch_backtrace()
             )
         end
         @info "Did not refresh token, could not json parse ", response
@@ -403,7 +403,7 @@ end
 
 function assert_dict_keys(dict::Dict, keys...; msg::AbstractString)
     any(haskey(dict, key) for key in keys) && return nothing
-    return if length(keys) == 1
+    if length(keys) == 1
         error("Key '$(first(keys))' not present in $msg")
     else
         keys = join(string.("'", keys, "'"), ", ")
@@ -535,26 +535,26 @@ ClaimToken(
     response,
     device_token_endpoint,
     device_token_refresh_url,
-    expiry = Inf,
-    failures = 0,
+    expiry=Inf,
+    failures=0,
 ) =
     ClaimToken(
-    server,
-    auth_suffix,
-    challenge,
-    response,
-    expiry,
-    time(),
-    180,
-    5,
-    failures,
-    20,
-    device_token_endpoint,
-    device_token_refresh_url,
-)
+        server,
+        auth_suffix,
+        challenge,
+        response,
+        expiry,
+        time(),
+        180,
+        5,
+        failures,
+        20,
+        device_token_endpoint,
+        device_token_refresh_url,
+    )
 
 function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
-    if time() > state.expiry || (time() - state.start_time) / 1.0e6 > state.timeout # server-side or client-side timeout
+    if time() > state.expiry || (time() - state.start_time) / 1e6 > state.timeout # server-side or client-side timeout
         return GenericError("Timeout waiting for user to authenticate in browser.")
     end
 
@@ -570,38 +570,36 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
         output = IOBuffer()
         response = Downloads.request(
             state.device_token_endpoint;
-            method = "POST",
-            input = device_token_request_body(;
-                client_id = device_client_id(),
-                device_code = state.response["device_code"],
-                grant_type = "urn:ietf:params:oauth:grant-type:device_code",
+            method="POST",
+            input=device_token_request_body(;
+                client_id=device_client_id(),
+                device_code=state.response["device_code"],
+                grant_type="urn:ietf:params:oauth:grant-type:device_code",
             ),
-            output = output,
-            throw = false,
-            headers = Dict(
+            output=output,
+            throw=false,
+            headers=Dict(
                 "Accept" => "application/json",
                 "Content-Type" => "application/x-www-form-urlencoded",
             ),
         )
     else
-        data = JSON.json(
-            Dict(
-                "challenge" => state.challenge,
-                "response" => state.response,
-            )
-        )
+        data = JSON.json(Dict(
+            "challenge" => state.challenge,
+            "response" => state.response,
+        ))
         response = Downloads.request(
             "$(state.server)/$(state.auth_suffix)/claimtoken";
             method = "POST",
-            input = IOBuffer(data),
+            input  = IOBuffer(data),
             output = output,
-            throw = false,
+            throw  = false,
         )
     end
 
     if response isa Downloads.Response && response.status == 200 && !is_device
         body = try
-            Dict(JSON.parse(String(take!(output))))
+            JSON.parse(String(take!(output)))
         catch err
             return ClaimToken(
                 state.server,
@@ -653,7 +651,7 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
             )
         end
     elseif response isa Downloads.Response && response.status == 200
-        body = Dict(JSON.parse(String(take!(output))))
+        body = JSON.parse(String(take!(output)))
         body["expires"] = body["expires_in"] + Int(floor(time()))
         body["expires_at"] = body["expires"]
         body["refresh_url"] = state.device_token_refresh_url
@@ -685,7 +683,6 @@ end
 struct GenericError{T} <: Failure
     reason::T
 end
-Base.show(io::IO, err::GenericError{<:Tuple}) = Base.showerror(io, err.reason[1], err.reason[2]; backtrace = true)
 
 abstract type HttpError <: Failure end
 
@@ -727,9 +724,9 @@ is_token_valid(toml) =
     get(toml, "refresh_token", nothing) isa AbstractString &&
     get(toml, "refresh_url", nothing) isa AbstractString &&
     (
-    get(toml, "expires_at", nothing) isa Union{Integer, AbstractFloat} ||
+        get(toml, "expires_at", nothing) isa Union{Integer, AbstractFloat} ||
         get(toml, "expires", nothing) isa Union{Integer, AbstractFloat}
-)
+    )
 
 @static if Base.VERSION >= v"1.4-"
     const pkg_server = Pkg.pkg_server
@@ -747,9 +744,9 @@ end
     const _get_server_dir = Pkg.PlatformEngines.get_server_dir
 else
     function _get_server_dir(
-            url::AbstractString,
-            server::AbstractString,
-        )
+        url::AbstractString,
+        server::AbstractString,
+    )
         server === nothing && return nothing
         url == server || startswith(url, "$server/") || return nothing
         m = match(r"^\w+://(?:[^\\/@]+@)?([^\\/:]+)(?:$|/|:)", server)
@@ -762,9 +759,9 @@ else
 end
 
 function get_server_dir(
-        url::AbstractString,
-        server::Union{AbstractString, Nothing} = pkg_server(),
-    )
+    url::AbstractString,
+    server::Union{AbstractString, Nothing}=pkg_server(),
+)
     server_dir_pkgauth = _get_server_dir(url, server)
     server_dir_pkg = Pkg.PlatformEngines.get_server_dir(url, server)
     if server_dir_pkgauth != server_dir_pkg
@@ -794,26 +791,26 @@ function register_open_browser_hook(f::Base.Callable)
     if !hasmethod(f, Tuple{AbstractString})
         throw(ArgumentError("Browser hook must be a function taking a single URL string argument."))
     end
-    return OPEN_BROWSER_HOOK[] = f
+    OPEN_BROWSER_HOOK[] = f
 end
 
 function clear_open_browser_hook()
-    return OPEN_BROWSER_HOOK[] = nothing
+    OPEN_BROWSER_HOOK[] = nothing
 end
 
 function open_browser(url::AbstractString)
     @debug "opening auth in browser"
     printstyled(
         "Authentication required: please authenticate in browser.\n";
-        color = :yellow,
-        bold = true,
+        color=:yellow,
+        bold=true,
     )
     printstyled(
         """
         The authentication page should open in your browser automatically, but you may need to switch to the opened window or tab. If the authentication page is not automatically opened, you can authenticate by manually opening the following URL: """;
-        color = :yellow,
+        color=:yellow,
     )
-    printstyled("$url\n"; color = :light_blue)
+    printstyled("$url\n"; color=:light_blue)
     try
         if OPEN_BROWSER_HOOK[] !== nothing
             try
@@ -824,15 +821,15 @@ function open_browser(url::AbstractString)
                 return false
             end
         elseif Sys.iswindows() || detectwsl()
-            run(`cmd.exe /c "start $url"`; wait = false)
+            run(`cmd.exe /c "start $url"`; wait=false)
         elseif Sys.isapple()
-            run(`open $url`; wait = false)
+            run(`open $url`; wait=false)
         elseif Sys.islinux() || Sys.isbsd()
-            run(`xdg-open $url`; wait = false)
+            run(`xdg-open $url`; wait=false)
         end
     catch err
         @warn "There was a problem opening the authentication URL in a browser, please try opening this URL manually to authenticate." url,
-            error = err
+        error = err
     end
     return true
 end
@@ -859,9 +856,9 @@ julia> PkgAuthentication.install("my-pkg-server.example.com")
 julia> PkgAuthentication.install("my-pkg-server.example.com"; maxcount = 5)
 ```
 """
-function install(server::AbstractString; maxcount::Integer = 3)
+function install(server::AbstractString; maxcount::Integer=3)
     ENV[pkg_server_env_var_name] = server
-    return install(; maxcount = maxcount)
+    return install(; maxcount=maxcount)
 end
 
 """
@@ -891,7 +888,7 @@ julia> PkgAuthentication.install(; maxcount = 5)
 PkgAuthentication.Uninstall (call this object to remove Pkg hooks)
 ```
 """
-function install(; maxcount::Integer = 3)
+function install(; maxcount::Integer=3)
     if maxcount < 1
         throw(ArgumentError("`maxcount` must be greater than or equal to one"))
     end
@@ -912,22 +909,22 @@ end
 function generate_auth_handler(maxcount::Integer)
     auth_handler =
         (url, server, err) -> begin
-        failed_auth_count = 0
-        ret = authenticate(server; tries = 2)
-        if ret isa Success
             failed_auth_count = 0
-            @debug "Authentication successful."
-        else
-            failed_auth_count += 1
-            if failed_auth_count >= maxcount
-                printstyled("\nAuthentication failed.\n\n"; color = :red, bold = true)
-                return true, false # handled, but Pkg shouldn't try again
+            ret = authenticate(server; tries=2)
+            if ret isa Success
+                failed_auth_count = 0
+                @debug "Authentication successful."
             else
-                printstyled("\nAuthentication failed. Retrying...\n\n"; color = :yellow, bold = true)
+                failed_auth_count += 1
+                if failed_auth_count >= maxcount
+                    printstyled("\nAuthentication failed.\n\n"; color=:red, bold=true)
+                    return true, false # handled, but Pkg shouldn't try again
+                else
+                    printstyled("\nAuthentication failed. Retrying...\n\n"; color=:yellow, bold=true)
+                end
             end
+            return true, true # handled, and Pkg should try again now
         end
-        return true, true # handled, and Pkg should try again now
-    end
     return auth_handler
 end
 
@@ -949,7 +946,7 @@ struct Uninstall
 end
 (c::Uninstall)() = isnothing(c.f) ? nothing : c.f()
 function Base.show(io::IO, ::MIME"text/plain", ::Uninstall)
-    return print(io, "PkgAuthentication.Uninstall (call this object to remove Pkg hooks)")
+    print(io, "PkgAuthentication.Uninstall (call this object to remove Pkg hooks)")
 end
 
 include("precompile.jl")
