@@ -233,7 +233,7 @@ function get_auth_configuration(state::NoAuthentication)
         body = nothing
         content = String(take!(output))
         try
-            body = JSON.parse(content)
+            body = Dict(JSON.parse(content))
         catch ex
             @debug "Request for well known configuration returned: ", content
             return Dict{String, Any}()
@@ -298,7 +298,7 @@ function fetch_device_code(
         body = nothing
         content = String(take!(output))
         try
-            body = JSON.parse(content)
+            body = Dict(JSON.parse(content))
         catch ex
             @debug "Request for device code returned: ", content
             return false, "", response
@@ -599,7 +599,7 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
 
     if response isa Downloads.Response && response.status == 200 && !is_device
         body = try
-            JSON.parse(String(take!(output)))
+            Dict(JSON.parse(String(take!(output))))
         catch err
             return ClaimToken(
                 state.server,
@@ -651,7 +651,7 @@ function step(state::ClaimToken)::Union{ClaimToken, HasNewToken, Failure}
             )
         end
     elseif response isa Downloads.Response && response.status == 200
-        body = JSON.parse(String(take!(output)))
+        body = Dict(JSON.parse(String(take!(output))))
         body["expires"] = body["expires_in"] + Int(floor(time()))
         body["expires_at"] = body["expires"]
         body["refresh_url"] = state.device_token_refresh_url
@@ -683,6 +683,7 @@ end
 struct GenericError{T} <: Failure
     reason::T
 end
+Base.show(io::IO, err::GenericError{<:Tuple}) = Base.showerror(io, err.reason[1], err.reason[2]; backtrace=true)
 
 abstract type HttpError <: Failure end
 
