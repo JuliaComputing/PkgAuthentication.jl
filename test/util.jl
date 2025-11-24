@@ -6,7 +6,7 @@ function with_depot(f::F, depot_path::AbstractString) where {F <: Function}
     active_depot = only(Pkg.depots())
     @info "The active depot is: $(active_depot)"
 
-    try
+    return try
         f()
     finally
         empty!(Base.DEPOT_PATH)
@@ -15,7 +15,7 @@ function with_depot(f::F, depot_path::AbstractString) where {F <: Function}
 end
 
 function with_temp_depot(f::F) where {F <: Function}
-    mktempdir() do temp_depot
+    return mktempdir() do temp_depot
         with_depot(f, temp_depot)
     end
 end
