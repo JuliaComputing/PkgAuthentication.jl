@@ -253,6 +253,16 @@ function get_auth_configuration(state::NoAuthentication)
     return Dict{String, Any}()
 end
 
+function assert_interactive_allowed()
+    name = "JULIA_PKGAUTHENTICATION_ALLOW_INTERACTIVE"
+    str = strip(get(ENV, name, "true"))
+    b = parse(Bool, str)
+    if !b
+        error("Interactive authentication has been disallowed via the environment variable: $name=$str")
+    end
+    return nothing
+end
+
 function step(state::NoAuthentication)::Union{RequestLogin, Failure}
     auth_config = get_auth_configuration(state)
     scope = get(auth_config, "device_token_scope", nothing)
@@ -802,6 +812,7 @@ function clear_open_browser_hook()
 end
 
 function open_browser(url::AbstractString)
+    assert_interactive_allowed()
     @debug "opening auth in browser"
     printstyled(
         "Authentication required: please authenticate in browser.\n";
